@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { sendPushToUsers } from "@/lib/push.functions";
 
 type NotifyKind = "info" | "warning" | "success" | "task" | "meeting" | "mention";
 
@@ -17,4 +18,9 @@ export async function notifyUsers(
       link: opts.link ?? null,
     })),
   );
+  try {
+    await sendPushToUsers({ data: { userIds: targets, title: opts.title, body: opts.body, link: opts.link } });
+  } catch {
+    // Push is a best-effort extra — the in-app notification above already landed.
+  }
 }
