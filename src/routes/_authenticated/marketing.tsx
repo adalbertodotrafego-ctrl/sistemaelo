@@ -6,7 +6,7 @@ import { PageHeader, StatCard, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Megaphone, Plus, TrendingUp, Target, DollarSign, MousePointerClick, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { brl, shortDate } from "@/lib/format";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { notifyUsers } from "@/lib/notifications";
 
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({ meta: [{ title: "Marketing — Elo Marketing OS" }] }),
@@ -38,9 +40,11 @@ const empty = { name: "", client_id: "", channel: "meta", objective: "", status:
 
 function MarketingPage() {
   const qc = useQueryClient();
+  const { user } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
+  const [notesMentions, setNotesMentions] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   const { data: campaigns } = useQuery({
@@ -51,10 +55,15 @@ function MarketingPage() {
     queryKey: ["clients-min"],
     queryFn: async () => (await supabase.from("clients").select("id, name").order("name")).data ?? [],
   });
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
+  });
 
   const openCreate = () => {
     setEditingId(null);
     setForm(empty);
+    setNotesMentions([]);
     setOpen(true);
   };
 
@@ -69,6 +78,7 @@ function MarketingPage() {
       roas: c.roas != null ? String(c.roas) : "", roi: c.roi != null ? String(c.roi) : "",
       start_date: c.start_date ?? "", end_date: c.end_date ?? "", notes: c.notes ?? "",
     });
+    setNotesMentions([]);
     setOpen(true);
   };
 
@@ -88,10 +98,15 @@ function MarketingPage() {
         const { error } = await supabase.from("campaigns").insert(payload);
         if (error) throw error;
       }
+      if (notesMentions.length > 0) {
+        await notifyUsers(notesMentions, {
+          kind: "mention", title: "Você foi mencionado numa campanha", body: form.name, link: "/marketing", excludeUserId: user?.id,
+        });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaigns"] });
-      setOpen(false); setEditingId(null); setForm(empty);
+      setOpen(false); setEditingId(null); setForm(empty); setNotesMentions([]);
       toast.success(editingId ? "Campanha atualizada!" : "Campanha criada!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -172,7 +187,17 @@ function MarketingPage() {
                 <div><Label>ROI (%)</Label><Input type="number" step="0.01" value={form.roi} onChange={e => setForm({...form, roi: e.target.value})} /></div>
                 <div><Label>Início</Label><Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} /></div>
                 <div><Label>Fim</Label><Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} /></div>
-                <div className="col-span-2"><Label>Observações</Label><Textarea rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
+                <div className="col-span-2">
+                  <Label>Observações</Label>
+                  <MentionTextarea
+                    rows={2}
+                    value={form.notes}
+                    onChange={(v) => setForm({...form, notes: v})}
+                    mentionedIds={notesMentions}
+                    onMentionedIdsChange={setNotesMentions}
+                    profiles={profiles ?? []}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>

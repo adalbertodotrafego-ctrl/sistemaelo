@@ -6,7 +6,7 @@ import { PageHeader, EmptyState, StatCard } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { FileText, Plus, Download, AlertTriangle, DollarSign, FileSignature, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { brl, shortDate } from "@/lib/format";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { notifyUsers } from "@/lib/notifications";
 
 export const Route = createFileRoute("/_authenticated/contracts")({
   head: () => ({ meta: [{ title: "Contratos — Elo Marketing OS" }] }),
@@ -28,10 +30,12 @@ const empty = { title: "", client_id: "", value: "", status: "active", signed_at
 
 function ContractsPage() {
   const qc = useQueryClient();
+  const { user } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [existingFilePath, setExistingFilePath] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
+  const [notesMentions, setNotesMentions] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
@@ -44,12 +48,17 @@ function ContractsPage() {
     queryKey: ["clients-min"],
     queryFn: async () => (await supabase.from("clients").select("id, name").order("name")).data ?? [],
   });
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
+  });
 
   const openCreate = () => {
     setEditingId(null);
     setExistingFilePath(null);
     setForm(empty);
     setFile(null);
+    setNotesMentions([]);
     setOpen(true);
   };
 
@@ -61,6 +70,7 @@ function ContractsPage() {
       status: c.status ?? "active", signed_at: c.signed_at ?? "", renewal_at: c.renewal_at ?? "", notes: c.notes ?? "",
     });
     setFile(null);
+    setNotesMentions([]);
     setOpen(true);
   };
 
@@ -87,10 +97,15 @@ function ContractsPage() {
         const { error } = await supabase.from("contracts").insert(payload);
         if (error) throw error;
       }
+      if (notesMentions.length > 0) {
+        await notifyUsers(notesMentions, {
+          kind: "mention", title: "Você foi mencionado num contrato", body: form.title, link: "/contracts", excludeUserId: user?.id,
+        });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contracts"] });
-      setOpen(false); setEditingId(null); setExistingFilePath(null); setForm(empty); setFile(null); setUploading(false);
+      setOpen(false); setEditingId(null); setExistingFilePath(null); setForm(empty); setFile(null); setUploading(false); setNotesMentions([]);
       toast.success(editingId ? "Contrato atualizado!" : "Contrato criado!");
     },
     onError: (e: Error) => { setUploading(false); toast.error(e.message); },
@@ -166,7 +181,17 @@ function ContractsPage() {
                   <Input type="file" accept=".pdf" onChange={e => setFile(e.target.files?.[0] ?? null)} />
                   {existingFilePath && !file && <p className="mt-1 text-[11px] text-muted-foreground">Selecione um novo arquivo para substituir o atual, ou deixe em branco para manter.</p>}
                 </div>
-                <div><Label>Observações</Label><Textarea rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
+                <div>
+                  <Label>Observações</Label>
+                  <MentionTextarea
+                    rows={2}
+                    value={form.notes}
+                    onChange={(v) => setForm({...form, notes: v})}
+                    mentionedIds={notesMentions}
+                    onMentionedIdsChange={setNotesMentions}
+                    profiles={profiles ?? []}
+                  />
+                </div>
               </div>
               <DialogFooter className="sm:justify-between">
                 {editingId ? (

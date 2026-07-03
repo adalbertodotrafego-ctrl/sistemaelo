@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -19,6 +20,8 @@ import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent, useDraggable, useDroppable,
 } from "@dnd-kit/core";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { notifyUsers } from "@/lib/notifications";
 
 export const Route = createFileRoute("/_authenticated/crm")({
   head: () => ({ meta: [{ title: "CRM — Elo Marketing OS" }] }),
@@ -35,14 +38,16 @@ const STAGES = [
   { id: "lost", label: "Perdido", color: "bg-red-500/15 text-red-300" },
 ] as const;
 
-const emptyForm = { name: "", company: "", source: "", value_expected: "", contact: "", stage: "lead" };
+const emptyForm = { name: "", company: "", source: "", value_expected: "", contact: "", stage: "lead", notes: "" };
 
 function CRMBoard() {
   const qc = useQueryClient();
+  const { user } = useCurrentUser();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [notesMentions, setNotesMentions] = useState<string[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
@@ -52,6 +57,11 @@ function CRMBoard() {
       const { data } = await supabase.from("crm_leads").select("*").order("created_at",{ascending:false});
       return data ?? [];
     },
+  });
+
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
   });
 
   const move = useMutation({
@@ -65,6 +75,7 @@ function CRMBoard() {
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setNotesMentions([]);
     setOpen(true);
   };
 
@@ -73,8 +84,9 @@ function CRMBoard() {
     setForm({
       name: lead.name ?? "", company: lead.company ?? "", source: lead.source ?? "",
       value_expected: lead.value_expected != null ? String(lead.value_expected) : "",
-      contact: lead.contact ?? "", stage: lead.stage ?? "lead",
+      contact: lead.contact ?? "", stage: lead.stage ?? "lead", notes: lead.notes ?? "",
     });
+    setNotesMentions([]);
     setOpen(true);
   };
 
@@ -91,12 +103,18 @@ function CRMBoard() {
         const { error } = await supabase.from("crm_leads").insert(payload);
         if (error) throw error;
       }
+      if (notesMentions.length > 0) {
+        await notifyUsers(notesMentions, {
+          kind: "mention", title: "Você foi mencionado num lead do CRM", body: form.name, link: "/crm", excludeUserId: user?.id,
+        });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["crm-leads"] });
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
+      setNotesMentions([]);
       toast.success(editingId ? "Lead atualizado!" : "Lead adicionado!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -146,6 +164,17 @@ function CRMBoard() {
                 <div><Label>Origem</Label><Input value={form.source} onChange={(e) => setForm({...form, source: e.target.value})} placeholder="Instagram, indicação…" /></div>
                 <div><Label>Contato</Label><Input value={form.contact} onChange={(e) => setForm({...form, contact: e.target.value})} /></div>
                 <div><Label>Valor esperado (R$)</Label><Input type="number" value={form.value_expected} onChange={(e) => setForm({...form, value_expected: e.target.value})} /></div>
+                <div>
+                  <Label>Notas</Label>
+                  <MentionTextarea
+                    rows={2}
+                    value={form.notes}
+                    onChange={(v) => setForm({...form, notes: v})}
+                    mentionedIds={notesMentions}
+                    onMentionedIdsChange={setNotesMentions}
+                    profiles={profiles ?? []}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>

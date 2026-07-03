@@ -6,7 +6,7 @@ import { PageHeader, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
@@ -17,6 +17,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { Video, Plus, ExternalLink, MapPin, Calendar, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { notifyUsers } from "@/lib/notifications";
 
 export const Route = createFileRoute("/_authenticated/meetings")({
   head: () => ({ meta: [{ title: "Reuniões — Elo Marketing OS" }] }),
@@ -32,12 +34,15 @@ function toLocalInputValue(iso: string | null | undefined) {
 
 function MeetingsPage() {
   const qc = useQueryClient();
+  const { user } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const empty = { title: "", client_id: "", start_at: "", end_at: "", meet_link: "", location: "", agenda: "" };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
+  const [agendaMentions, setAgendaMentions] = useState<string[]>([]);
   const [active, setActive] = useState<any>(null);
   const [summary, setSummary] = useState("");
+  const [summaryMentions, setSummaryMentions] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   const { data: meetings } = useQuery({
@@ -48,10 +53,15 @@ function MeetingsPage() {
     queryKey: ["clients-min"],
     queryFn: async () => (await supabase.from("clients").select("id, name").order("name")).data ?? [],
   });
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
+  });
 
   const openCreate = () => {
     setEditingId(null);
     setForm(empty);
+    setAgendaMentions([]);
     setOpen(true);
   };
 
@@ -62,6 +72,7 @@ function MeetingsPage() {
       start_at: toLocalInputValue(m.events?.start_at), end_at: toLocalInputValue(m.events?.end_at),
       meet_link: m.events?.meet_link ?? "", location: m.events?.location ?? "", agenda: m.agenda ?? "",
     });
+    setAgendaMentions([]);
     setOpen(true);
   };
 
@@ -91,11 +102,16 @@ function MeetingsPage() {
         });
         if (e2) throw e2;
       }
+      if (agendaMentions.length > 0) {
+        await notifyUsers(agendaMentions, {
+          kind: "mention", title: "Você foi mencionado numa reunião", body: form.title, link: "/meetings", excludeUserId: user?.id,
+        });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["meetings"] });
       qc.invalidateQueries({ queryKey: ["events"] });
-      setOpen(false); setEditingId(null); setForm(empty);
+      setOpen(false); setEditingId(null); setForm(empty); setAgendaMentions([]);
       toast.success(editingId ? "Reunião atualizada!" : "Reunião criada!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -105,10 +121,16 @@ function MeetingsPage() {
     mutationFn: async () => {
       const { error } = await supabase.from("meetings").update({ summary, status: "completed" }).eq("id", active.id);
       if (error) throw error;
+      if (summaryMentions.length > 0) {
+        await notifyUsers(summaryMentions, {
+          kind: "mention", title: "Você foi mencionado numa ata de reunião",
+          body: active?.events?.title, link: "/meetings", excludeUserId: user?.id,
+        });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["meetings"] });
-      setActive(null); setSummary("");
+      setActive(null); setSummary(""); setSummaryMentions([]);
       toast.success("Ata salva!");
     },
   });
@@ -158,7 +180,18 @@ function MeetingsPage() {
                 </div>
                 <div><Label>Link Meet/Zoom</Label><Input value={form.meet_link} onChange={e => setForm({...form, meet_link: e.target.value})} placeholder="https://..." /></div>
                 <div><Label>Local</Label><Input value={form.location} onChange={e => setForm({...form, location: e.target.value})} /></div>
-                <div><Label>Pauta / objetivo</Label><Textarea rows={3} value={form.agenda} onChange={e => setForm({...form, agenda: e.target.value})} /></div>
+                <div>
+                  <Label>Pauta / objetivo</Label>
+                  <MentionTextarea
+                    rows={3}
+                    value={form.agenda}
+                    onChange={(v) => setForm({...form, agenda: v})}
+                    mentionedIds={agendaMentions}
+                    onMentionedIdsChange={setAgendaMentions}
+                    profiles={profiles ?? []}
+                    placeholder="Pauta, objetivo… use @ para mencionar quem precisa saber"
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -228,7 +261,15 @@ function MeetingsPage() {
           )}
           <div>
             <Label>Ata da reunião</Label>
-            <Textarea rows={8} value={summary} onChange={e => setSummary(e.target.value)} placeholder="Decisões, próximos passos, responsáveis..." />
+            <MentionTextarea
+              rows={8}
+              value={summary}
+              onChange={setSummary}
+              mentionedIds={summaryMentions}
+              onMentionedIdsChange={setSummaryMentions}
+              profiles={profiles ?? []}
+              placeholder="Decisões, próximos passos, responsáveis… use @ para mencionar alguém"
+            />
           </div>
           <DialogFooter className="sm:justify-between">
             <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(active)}>

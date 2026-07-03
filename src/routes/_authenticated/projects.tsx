@@ -6,7 +6,7 @@ import { PageHeader, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { FolderKanban, Plus, Calendar, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { shortDate } from "@/lib/format";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { notifyUsers } from "@/lib/notifications";
 
 export const Route = createFileRoute("/_authenticated/projects")({
   head: () => ({ meta: [{ title: "Projetos — Elo Marketing OS" }] }),
@@ -41,9 +43,11 @@ const STATUS_OPTIONS = [
 
 function ProjectsPage() {
   const qc = useQueryClient();
+  const { user } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [descMentions, setDescMentions] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   const { data: projects } = useQuery({
@@ -60,9 +64,15 @@ function ProjectsPage() {
     queryFn: async () => (await supabase.from("clients").select("id,name,company")).data ?? [],
   });
 
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
+  });
+
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setDescMentions([]);
     setOpen(true);
   };
 
@@ -74,6 +84,7 @@ function ProjectsPage() {
       priority: p.priority ?? "medium", status: p.status ?? "planning",
       progress: p.progress != null ? String(p.progress) : "0",
     });
+    setDescMentions([]);
     setOpen(true);
   };
 
@@ -91,12 +102,18 @@ function ProjectsPage() {
         const { error } = await supabase.from("projects").insert(payload);
         if (error) throw error;
       }
+      if (descMentions.length > 0) {
+        await notifyUsers(descMentions, {
+          kind: "mention", title: "Você foi mencionado num projeto", body: form.name, link: "/projects", excludeUserId: user?.id,
+        });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
+      setDescMentions([]);
       toast.success(editingId ? "Projeto atualizado!" : "Projeto criado!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -170,7 +187,16 @@ function ProjectsPage() {
                     <div><Label>Progresso (%)</Label><Input type="number" min={0} max={100} value={form.progress} onChange={e => setForm({...form, progress: e.target.value})} /></div>
                   </>
                 )}
-                <div className="col-span-2"><Label>Descrição</Label><Textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} /></div>
+                <div className="col-span-2">
+                  <Label>Descrição</Label>
+                  <MentionTextarea
+                    value={form.description}
+                    onChange={(v) => setForm({...form, description: v})}
+                    mentionedIds={descMentions}
+                    onMentionedIdsChange={setDescMentions}
+                    profiles={profiles ?? []}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>

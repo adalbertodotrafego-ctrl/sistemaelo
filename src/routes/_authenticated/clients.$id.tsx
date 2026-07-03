@@ -6,11 +6,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { initials, brl, shortDate } from "@/lib/format";
 import { ArrowLeft, Mail, Phone, MapPin, Globe, MessageCircle, Instagram, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { notifyUsers } from "@/lib/notifications";
 
 export const Route = createFileRoute("/_authenticated/clients/$id")({
   component: ClientDetail,
@@ -21,6 +22,12 @@ function ClientDetail() {
   const qc = useQueryClient();
   const { user } = useCurrentUser();
   const [note, setNote] = useState("");
+  const [noteMentions, setNoteMentions] = useState<string[]>([]);
+
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
+  });
 
   const { data: client } = useQuery({
     queryKey: ["client", id],
@@ -59,8 +66,14 @@ function ClientDetail() {
     mutationFn: async () => {
       const { error } = await supabase.from("client_notes").insert({ client_id: id, body: note, author_id: user?.id });
       if (error) throw error;
+      if (noteMentions.length > 0) {
+        await notifyUsers(noteMentions, {
+          kind: "mention", title: "Você foi mencionado numa anotação de cliente",
+          body: `${client?.company ?? client?.name ?? "Cliente"}: ${note}`, link: `/clients/${id}`, excludeUserId: user?.id,
+        });
+      }
     },
-    onSuccess: () => { setNote(""); qc.invalidateQueries({ queryKey: ["client-notes", id] }); toast.success("Anotação salva"); },
+    onSuccess: () => { setNote(""); setNoteMentions([]); qc.invalidateQueries({ queryKey: ["client-notes", id] }); toast.success("Anotação salva"); },
   });
 
   if (!client) return <div className="surface-card p-10 text-center text-sm text-muted-foreground">Carregando…</div>;
@@ -147,10 +160,13 @@ function ClientDetail() {
 
         <TabsContent value="notes" className="mt-5">
           <div className="surface-card p-5">
-            <Textarea
-              placeholder="Adicione uma anotação sobre este cliente…"
+            <MentionTextarea
+              placeholder="Adicione uma anotação sobre este cliente… use @ para mencionar alguém"
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={setNote}
+              mentionedIds={noteMentions}
+              onMentionedIdsChange={setNoteMentions}
+              profiles={profiles ?? []}
               rows={3}
             />
             <div className="mt-2 flex justify-end">
