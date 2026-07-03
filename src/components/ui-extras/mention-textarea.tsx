@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { initials } from "@/lib/format";
-import { X } from "lucide-react";
+import { X, Bold, Italic } from "lucide-react";
 
 type Profile = { id: string; full_name: string | null; email: string | null; avatar_url?: string | null };
 
@@ -13,7 +13,7 @@ const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 // people also show as removable chips below, since editing the text alone can't
 // reliably signal an intentional "un-mention".
 export function MentionTextarea({
-  value, onChange, mentionedIds, onMentionedIdsChange, profiles, rows = 3, placeholder,
+  value, onChange, mentionedIds, onMentionedIdsChange, profiles, rows = 3, placeholder, enableFormatting = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -22,9 +22,28 @@ export function MentionTextarea({
   profiles: Profile[];
   rows?: number;
   placeholder?: string;
+  /** Adds a bold/italic toolbar that wraps the selection in **markdown-lite** markers. */
+  enableFormatting?: boolean;
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+
+  const wrapSelection = (marker: string) => {
+    const el = taRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = value.slice(start, end);
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const inserted = `${marker}${selected}${marker}`;
+    onChange(before + inserted + after);
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = selected ? start + inserted.length : start + marker.length;
+      el.setSelectionRange(cursor, cursor);
+    });
+  };
 
   const updateFromCaret = (text: string, caret: number) => {
     const before = text.slice(0, caret);
@@ -61,6 +80,18 @@ export function MentionTextarea({
 
   return (
     <div className="relative">
+      {enableFormatting && (
+        <div className="mb-1 flex gap-1">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => wrapSelection("**")}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Negrito">
+            <Bold className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => wrapSelection("_")}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Itálico">
+            <Italic className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <Textarea
         ref={taRef}
         rows={rows}

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/ui-extras/page";
 import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
+import { FormattedText } from "@/components/ui-extras/formatted-text";
+import { AttachmentChip } from "@/components/ui-extras/attachment-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,9 +16,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X, MessageCircle, Send } from "lucide-react";
+import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X, MessageCircle, Send, Paperclip } from "lucide-react";
 import { shortDate, initials } from "@/lib/format";
 import { notifyUsers } from "@/lib/notifications";
+import { uploadTaskFile, type Attachment } from "@/lib/storage";
 import { toast } from "sonner";
 import {
   DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors,
@@ -53,6 +56,8 @@ function TasksPage() {
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [chatTask, setChatTask] = useState<any>(null);
   // For admins/managers: filter by member. Default = my own tasks.
@@ -106,6 +111,8 @@ function TasksPage() {
     setMentionedIds(user?.id ? [user.id] : []);
     setLinks([]);
     setLinkLabel(""); setLinkUrl("");
+    setAttachments([]);
+    setPendingFiles([]);
     setOpen(true);
   };
 
@@ -118,6 +125,8 @@ function TasksPage() {
     setMentionedIds((task.task_assignees ?? []).map((a: any) => a.user_id));
     setLinks(Array.isArray(task.links) ? task.links : []);
     setLinkLabel(""); setLinkUrl("");
+    setAttachments(Array.isArray(task.attachments) ? task.attachments : []);
+    setPendingFiles([]);
     setOpen(true);
   };
 
@@ -130,7 +139,7 @@ function TasksPage() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload: any = { ...form, links };
+      const payload: any = { ...form, links, attachments };
       if (!payload.due_date) payload.due_date = null;
       const wasStatus = editingId ? tasks?.find((t: any) => t.id === editingId)?.status : null;
       let taskId = editingId;
@@ -142,6 +151,12 @@ function TasksPage() {
         const { data, error } = await supabase.from("tasks").insert(payload).select().single();
         if (error) throw error;
         taskId = data.id;
+      }
+
+      if (pendingFiles.length > 0) {
+        const uploaded = await Promise.all(pendingFiles.map((f) => uploadTaskFile(f, `tasks/${taskId}`)));
+        const { error: attErr } = await supabase.from("tasks").update({ attachments: [...attachments, ...uploaded] } as any).eq("id", taskId as string);
+        if (attErr) throw attErr;
       }
 
       const prevAssignees: string[] = editingId
@@ -168,6 +183,8 @@ function TasksPage() {
       setForm(emptyForm);
       setMentionedIds([]);
       setLinks([]);
+      setAttachments([]);
+      setPendingFiles([]);
       toast.success(editingId ? "Tarefa atualizada!" : "Tarefa criada!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -220,7 +237,7 @@ function TasksPage() {
                 </SelectContent>
               </Select>
             )}
-            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setMentionedIds([]); setLinks([]); } }}>
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setMentionedIds([]); setLinks([]); setAttachments([]); setPendingFiles([]); } }}>
               <DialogTrigger asChild><Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Nova tarefa</Button></DialogTrigger>
               <DialogContent className="max-h-[85vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>{editingId ? "Editar tarefa" : "Nova tarefa"}</DialogTitle></DialogHeader>
@@ -236,8 +253,9 @@ function TasksPage() {
                       profiles={profiles ?? []}
                       rows={3}
                       placeholder="Detalhes da tarefa… use @ para mencionar quem vai executar"
+                      enableFormatting
                     />
-                    <p className="mt-1 text-[11px] text-muted-foreground">A tarefa aparece no quadro de todas as pessoas mencionadas.</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">A tarefa aparece no quadro de todas as pessoas mencionadas. **negrito**, _itálico_.</p>
                   </div>
                   <div>
                     <Label>Links</Label>
@@ -252,6 +270,27 @@ function TasksPage() {
                           <span key={i} className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-xs text-primary">
                             <Link2 className="h-3 w-3" />{l.label}
                             <button type="button" onClick={() => setLinks(links.filter((_, idx) => idx !== i))} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Arquivos e imagens</Label>
+                    <Input
+                      type="file"
+                      multiple
+                      onChange={(e) => setPendingFiles([...pendingFiles, ...Array.from(e.target.files ?? [])])}
+                    />
+                    {(attachments.length > 0 || pendingFiles.length > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {attachments.map((a, i) => (
+                          <AttachmentChip key={a.path} attachment={a} onRemove={() => setAttachments(attachments.filter((_, idx) => idx !== i))} />
+                        ))}
+                        {pendingFiles.map((f, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2 pr-1 text-xs text-muted-foreground">
+                            <Paperclip className="h-3 w-3" />{f.name}
+                            <button type="button" onClick={() => setPendingFiles(pendingFiles.filter((_, idx) => idx !== i))} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
                           </span>
                         ))}
                       </div>
@@ -356,6 +395,7 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
     .map((a: any) => profiles.find((p) => p.id === a.user_id))
     .filter(Boolean);
   const links: LinkItem[] = Array.isArray(task.links) ? task.links : [];
+  const taskAttachments: Attachment[] = Array.isArray(task.attachments) ? task.attachments : [];
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}
       className={"surface-card group relative cursor-grab p-3 active:cursor-grabbing " + (isDragging ? "opacity-40" : "")}>
@@ -379,7 +419,9 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
         </DropdownMenu>
       </div>
       <div className="pr-5 text-sm font-medium">{task.title}</div>
-      {task.description && <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{task.description}</div>}
+      {task.description && (
+        <FormattedText text={task.description} className="mt-1 line-clamp-2 text-xs text-muted-foreground" />
+      )}
       {links.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {links.map((l, i) => (
@@ -389,6 +431,11 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
               <Link2 className="h-2.5 w-2.5" />{l.label}
             </a>
           ))}
+        </div>
+      )}
+      {taskAttachments.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
+          {taskAttachments.map((a) => <AttachmentChip key={a.path} attachment={a} />)}
         </div>
       )}
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -421,7 +468,10 @@ function TaskChatDialog({ task, profiles, currentUserId, onClose }: {
 }) {
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
+  const [chatFiles, setChatFiles] = useState<File[]>([]);
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: comments } = useQuery({
     queryKey: ["task-comments", task.id],
@@ -449,16 +499,23 @@ function TaskChatDialog({ task, profiles, currentUserId, onClose }: {
   const send = useMutation({
     mutationFn: async () => {
       const body = message.trim();
-      if (!body) return;
-      const { error } = await supabase.from("task_comments").insert({ task_id: task.id, author_id: currentUserId, body });
+      if (!body && chatFiles.length === 0) return;
+      setSending(true);
+      const uploaded = chatFiles.length > 0
+        ? await Promise.all(chatFiles.map((f) => uploadTaskFile(f, `tasks/${task.id}/chat`)))
+        : [];
+      const { error } = await (supabase as any).from("task_comments").insert({ task_id: task.id, author_id: currentUserId, body, attachments: uploaded });
       if (error) throw error;
       const assigneeIds = (task.task_assignees ?? []).map((a: any) => a.user_id);
       await notifyUsers(assigneeIds, {
-        kind: "task", title: `Nova mensagem em "${task.title}"`, body, link: "/tasks", excludeUserId: currentUserId,
+        kind: "task", title: `Nova mensagem em "${task.title}"`, body: body || "Enviou um anexo", link: "/tasks", excludeUserId: currentUserId,
       });
     },
-    onSuccess: () => { setMessage(""); qc.invalidateQueries({ queryKey: ["task-comments", task.id] }); },
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: () => {
+      setMessage(""); setChatFiles([]); setSending(false);
+      qc.invalidateQueries({ queryKey: ["task-comments", task.id] });
+    },
+    onError: (e: Error) => { setSending(false); toast.error(e.message); },
   });
 
   return (
@@ -492,7 +549,12 @@ function TaskChatDialog({ task, profiles, currentUserId, onClose }: {
                 </Avatar>
                 <div className={"max-w-[75%] rounded-lg px-3 py-1.5 text-sm " + (mine ? "bg-primary text-primary-foreground" : "border border-border/50 bg-surface")}>
                   {!mine && <div className="text-[10px] font-semibold text-muted-foreground">{author?.full_name ?? "—"}</div>}
-                  <div className="whitespace-pre-wrap break-words">{c.body}</div>
+                  {c.body && <FormattedText text={c.body} className="whitespace-pre-wrap break-words" />}
+                  {Array.isArray(c.attachments) && c.attachments.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {c.attachments.map((a: Attachment) => <AttachmentChip key={a.path} attachment={a} />)}
+                    </div>
+                  )}
                   <div className={"mt-0.5 text-[9px] " + (mine ? "text-primary-foreground/70" : "text-muted-foreground")}>
                     {new Date(c.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                   </div>
@@ -501,14 +563,34 @@ function TaskChatDialog({ task, profiles, currentUserId, onClose }: {
             );
           })}
         </div>
+        {chatFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {chatFiles.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2 pr-1 text-xs text-muted-foreground">
+                <Paperclip className="h-3 w-3" />{f.name}
+                <button type="button" onClick={() => setChatFiles(chatFiles.filter((_, idx) => idx !== i))} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => { setChatFiles([...chatFiles, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }}
+          />
+          <Button type="button" variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} title="Anexar arquivo ou imagem">
+            <Paperclip className="h-4 w-4" />
+          </Button>
           <Input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send.mutate(); } }}
             placeholder="Escreva uma mensagem…"
           />
-          <Button onClick={() => send.mutate()} disabled={!message.trim() || send.isPending}><Send className="h-4 w-4" /></Button>
+          <Button onClick={() => send.mutate()} disabled={(!message.trim() && chatFiles.length === 0) || sending}><Send className="h-4 w-4" /></Button>
         </div>
       </DialogContent>
     </Dialog>
