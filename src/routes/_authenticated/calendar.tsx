@@ -8,27 +8,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, Tag as TagIcon, Pencil, CalendarRange, Link2, Unlink } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, Tag as TagIcon, Pencil, CalendarRange, Link2, Unlink, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   beginGoogleCalendarConnect, disconnectGoogleCalendar, getGoogleCalendarStatus,
   syncGoogleCalendarNow, deleteCalendarEvent,
 } from "@/lib/google-calendar.functions";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
+import { notifyUsers } from "@/lib/notifications";
+import { initials } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
   head: () => ({ meta: [{ title: "Calendário — Elo Marketing OS" }] }),
   component: CalendarPage,
 });
 
-const emptyEventForm = { title: "", type: "event", start_at: "", end_at: "", location: "", notes: "" };
+const emptyEventForm = { title: "", type: "event", start_at: "", end_at: "", location: "", notes: "", completed: false };
 
 function toLocalInputValue(iso: string | null | undefined) {
   if (!iso) return "";
@@ -107,30 +113,46 @@ function CalendarPage() {
   }, [googleStatus?.connected, view]);
 
   // ---- Month view state ----
+  const { isAdmin } = usePermissions();
   const [cursor, setCursor] = useState(new Date());
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyEventForm);
+  const [mentionedIds, setMentionedIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [viewUserId, setViewUserId] = useState<string>("me");
+
+  const { data: profiles } = useQuery({
+    queryKey: ["team-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
+  });
 
   const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
   const startWeekday = monthStart.getDay();
   const daysInMonth = monthEnd.getDate();
 
-  const { data: events } = useQuery({
+  const { data: rawEvents } = useQuery({
     queryKey: ["events", cursor.getFullYear(), cursor.getMonth()],
     queryFn: async () => {
-      const { data } = await supabase.from("events").select("*")
+      const { data } = await (supabase as any).from("events").select("*, event_participants(user_id)")
         .gte("start_at", monthStart.toISOString())
         .lte("start_at", new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate(), 23,59).toISOString());
       return data ?? [];
     },
   });
 
+  const effectiveViewerId = viewUserId === "me" ? user?.id : viewUserId;
+  const events = (rawEvents ?? []).filter((e: any) => {
+    if (!effectiveViewerId) return true;
+    const participantIds = (e.event_participants ?? []).map((p: any) => p.user_id);
+    return e.created_by === effectiveViewerId || participantIds.includes(effectiveViewerId);
+  });
+
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyEventForm);
+    setMentionedIds(user?.id ? [user.id] : []);
     setOpen(true);
   };
 
@@ -139,8 +161,9 @@ function CalendarPage() {
     setForm({
       title: ev.title ?? "", type: ev.type ?? "event",
       start_at: toLocalInputValue(ev.start_at), end_at: toLocalInputValue(ev.end_at),
-      location: ev.location ?? "", notes: ev.notes ?? "",
+      location: ev.location ?? "", notes: ev.notes ?? "", completed: !!ev.completed,
     });
+    setMentionedIds((ev.event_participants ?? []).map((p: any) => p.user_id));
     setOpen(true);
   };
 
@@ -152,13 +175,38 @@ function CalendarPage() {
       // as local time, so converting to ISO here stores the instant you actually picked.
       payload.start_at = new Date(payload.start_at).toISOString();
       payload.end_at = payload.end_at ? new Date(payload.end_at).toISOString() : null;
+      const prevEvent = editingId ? rawEvents?.find((e: any) => e.id === editingId) : null;
+      const prevCompleted = !!prevEvent?.completed;
+      const prevParticipants: string[] = (prevEvent?.event_participants ?? []).map((p: any) => p.user_id);
+      let eventId = editingId;
       if (editingId) {
         const { error } = await supabase.from("events").update(payload).eq("id", editingId);
         if (error) throw error;
       } else {
         payload.created_by = user?.id;
-        const { error } = await supabase.from("events").insert(payload);
+        const { data, error } = await supabase.from("events").insert(payload).select().single();
         if (error) throw error;
+        eventId = data.id;
+      }
+
+      await (supabase as any).from("event_participants").delete().eq("event_id", eventId);
+      if (mentionedIds.length > 0) {
+        await (supabase as any).from("event_participants").insert(mentionedIds.map((user_id) => ({ event_id: eventId, user_id })));
+      }
+      const newlyMentioned = mentionedIds.filter((id) => !prevParticipants.includes(id));
+      if (newlyMentioned.length > 0) {
+        await notifyUsers(newlyMentioned, {
+          kind: "mention", title: "Você foi adicionado a um evento", body: form.title, link: "/calendar", excludeUserId: user?.id,
+        });
+      }
+      if (editingId && form.completed !== prevCompleted) {
+        await notifyUsers([...mentionedIds, prevEvent?.created_by].filter(Boolean), {
+          kind: form.completed ? "success" : "info",
+          title: form.completed ? "Evento concluído" : "Evento reaberto",
+          body: `"${form.title}" foi marcado como ${form.completed ? "concluído" : "não concluído"}.`,
+          link: "/calendar",
+          excludeUserId: user?.id,
+        });
       }
     },
     onSuccess: () => {
@@ -166,6 +214,7 @@ function CalendarPage() {
       setOpen(false);
       setEditingId(null);
       setForm(emptyEventForm);
+      setMentionedIds([]);
       toast.success(editingId ? "Evento atualizado!" : "Evento criado!");
       backgroundSync();
     },
@@ -290,6 +339,17 @@ function CalendarPage() {
 
             {view === "month" ? (
               <>
+                {isAdmin && (
+                  <Select value={viewUserId} onValueChange={setViewUserId}>
+                    <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="me">Meu calendário</SelectItem>
+                      {profiles?.filter((p: any) => p.id !== user?.id).map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>{p.full_name ?? p.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {googleStatus?.connected ? (
                   <div className="surface-card flex items-center gap-1.5 p-1 pl-3 text-xs text-muted-foreground">
                     <span className="max-w-[140px] truncate">{googleStatus.email}</span>
@@ -317,7 +377,7 @@ function CalendarPage() {
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
-                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyEventForm); } }}>
+                <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyEventForm); setMentionedIds([]); } }}>
                   <DialogTrigger asChild><Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Novo evento</Button></DialogTrigger>
                   <DialogContent>
                     <DialogHeader><DialogTitle>{editingId ? "Editar evento" : "Novo evento"}</DialogTitle></DialogHeader>
@@ -342,7 +402,22 @@ function CalendarPage() {
                         <div><Label>Início *</Label><Input type="datetime-local" value={form.start_at} onChange={e => setForm({...form, start_at: e.target.value})} /></div>
                         <div><Label>Fim</Label><Input type="datetime-local" value={form.end_at} onChange={e => setForm({...form, end_at: e.target.value})} /></div>
                       </div>
-                      <div><Label>Descrição</Label><Textarea rows={3} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Detalhes do evento…" /></div>
+                      <div>
+                        <Label>Descrição</Label>
+                        <MentionTextarea
+                          value={form.notes}
+                          onChange={(v) => setForm({ ...form, notes: v })}
+                          mentionedIds={mentionedIds}
+                          onMentionedIdsChange={setMentionedIds}
+                          profiles={profiles ?? []}
+                          rows={3}
+                          placeholder="Detalhes do evento… use @ para mencionar participantes"
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox checked={form.completed} onCheckedChange={(v) => setForm({ ...form, completed: !!v })} />
+                        Marcar como concluído
+                      </label>
                     </div>
                     <DialogFooter className="sm:justify-between">
                       {editingId ? (
@@ -397,8 +472,9 @@ function CalendarPage() {
                       <div className="space-y-1">
                         {evs.slice(0,3).map((e: any) => (
                           <button key={e.id} onClick={() => openEdit(e)}
-                            className={"block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] hover:opacity-80 " + typeColor[e.type]}>
-                            {e.title}
+                            className={"flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[10px] hover:opacity-80 " + typeColor[e.type] + (e.completed ? " opacity-50 line-through" : "")}>
+                            {e.completed && <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />}
+                            <span className="truncate">{e.title}</span>
                           </button>
                         ))}
                         {evs.length > 3 && <div className="text-[10px] text-muted-foreground">+{evs.length - 3} mais</div>}

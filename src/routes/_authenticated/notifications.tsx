@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, EmptyState } from "@/components/ui-extras/page";
@@ -14,6 +14,7 @@ export const Route = createFileRoute("/_authenticated/notifications")({
 
 function NotificationsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => (await supabase.from("notifications").select("*").order("created_at", { ascending: false })).data ?? [],
@@ -25,6 +26,18 @@ function NotificationsPage() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
+
+  const markRead = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", id);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
+  const openNotification = (n: any) => {
+    if (!n.read_at) markRead.mutate(n.id);
+    if (n.link) navigate({ to: n.link });
+  };
 
   return (
     <div>
@@ -39,7 +52,8 @@ function NotificationsPage() {
       ) : (
         <div className="space-y-2">
           {data.map((n: any) => (
-            <div key={n.id} className={"surface-card flex items-start gap-3 p-4 " + (!n.read_at ? "border-l-2 border-l-primary" : "")}>
+            <div key={n.id} onClick={() => openNotification(n)}
+              className={"surface-card flex items-start gap-3 p-4 " + (n.link ? "cursor-pointer hover:border-primary/40 " : "") + (!n.read_at ? "border-l-2 border-l-primary" : "")}>
               <Bell className="mt-0.5 h-4 w-4 text-primary" />
               <div className="flex-1">
                 <div className="flex items-center gap-2">

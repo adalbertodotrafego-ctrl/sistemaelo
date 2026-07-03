@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/ui-extras/page";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +14,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Calendar, User, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X } from "lucide-react";
 import { shortDate, initials } from "@/lib/format";
+import { notifyUsers } from "@/lib/notifications";
 import { toast } from "sonner";
 import {
   DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors,
@@ -36,7 +38,8 @@ const COLUMNS = [
   { id: "done", label: "Concluído", tone: "text-emerald-300" },
 ] as const;
 
-const emptyForm = { title: "", description: "", priority: "medium", due_date: "", status: "todo", assignee_id: "" };
+type LinkItem = { label: string; url: string };
+const emptyForm = { title: "", description: "", priority: "medium", due_date: "", status: "todo" };
 
 function TasksPage() {
   const qc = useQueryClient();
@@ -46,6 +49,10 @@ function TasksPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [mentionedIds, setMentionedIds] = useState<string[]>([]);
+  const [links, setLinks] = useState<LinkItem[]>([]);
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   // For admins/managers: filter by member. Default = my own tasks.
   const [viewUserId, setViewUserId] = useState<string>("me");
@@ -64,16 +71,30 @@ function TasksPage() {
     queryKey: ["tasks", effectiveUserId],
     enabled: !!user,
     queryFn: async () => {
-      let q = supabase.from("tasks").select("*").order("created_at", { ascending: false });
-      if (effectiveUserId) q = q.eq("assignee_id", effectiveUserId);
-      return (await q).data ?? [];
+      if (!effectiveUserId) {
+        const { data } = await (supabase as any).from("tasks").select("*, task_assignees(user_id)").order("created_at", { ascending: false });
+        return data ?? [];
+      }
+      // !inner turns the embed into a join filter, so only tasks with this assignee come back.
+      const { data } = await (supabase as any)
+        .from("tasks")
+        .select("*, task_assignees!inner(user_id)")
+        .eq("task_assignees.user_id", effectiveUserId)
+        .order("created_at", { ascending: false });
+      return data ?? [];
     },
   });
 
   const move = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const task = tasks?.find((t: any) => t.id === id);
       const { error } = await supabase.from("tasks").update({ status } as any).eq("id", id);
       if (error) throw error;
+      if (status === "done" && task && task.status !== "done" && task.created_by && task.created_by !== user?.id) {
+        await notifyUsers([task.created_by], {
+          kind: "task", title: "Tarefa concluída", body: `"${task.title}" foi marcada como concluída.`, link: "/tasks",
+        });
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
@@ -81,34 +102,62 @@ function TasksPage() {
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setMentionedIds(user?.id ? [user.id] : []);
+    setLinks([]);
+    setLinkLabel(""); setLinkUrl("");
     setOpen(true);
   };
 
   const openEdit = (task: any) => {
     setEditingId(task.id);
     setForm({
-      title: task.title ?? "",
-      description: task.description ?? "",
-      priority: task.priority ?? "medium",
-      due_date: task.due_date ?? "",
-      status: task.status ?? "todo",
-      assignee_id: task.assignee_id ?? "",
+      title: task.title ?? "", description: task.description ?? "", priority: task.priority ?? "medium",
+      due_date: task.due_date ?? "", status: task.status ?? "todo",
     });
+    setMentionedIds((task.task_assignees ?? []).map((a: any) => a.user_id));
+    setLinks(Array.isArray(task.links) ? task.links : []);
+    setLinkLabel(""); setLinkUrl("");
     setOpen(true);
+  };
+
+  const addLink = () => {
+    if (!linkUrl.trim()) return;
+    const url = /^https?:\/\//i.test(linkUrl) ? linkUrl : `https://${linkUrl}`;
+    setLinks([...links, { label: linkLabel.trim() || url, url }]);
+    setLinkLabel(""); setLinkUrl("");
   };
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload: any = { ...form };
+      const payload: any = { ...form, links };
       if (!payload.due_date) payload.due_date = null;
-      if (!payload.assignee_id) payload.assignee_id = user?.id;
+      const wasStatus = editingId ? tasks?.find((t: any) => t.id === editingId)?.status : null;
+      let taskId = editingId;
       if (editingId) {
         const { error } = await supabase.from("tasks").update(payload).eq("id", editingId);
         if (error) throw error;
       } else {
         payload.created_by = user?.id;
-        const { error } = await supabase.from("tasks").insert(payload);
+        const { data, error } = await supabase.from("tasks").insert(payload).select().single();
         if (error) throw error;
+        taskId = data.id;
+      }
+
+      const prevAssignees: string[] = editingId
+        ? ((tasks?.find((t: any) => t.id === editingId)?.task_assignees ?? []).map((a: any) => a.user_id))
+        : [];
+      await (supabase as any).from("task_assignees").delete().eq("task_id", taskId);
+      if (mentionedIds.length > 0) {
+        await (supabase as any).from("task_assignees").insert(mentionedIds.map((user_id) => ({ task_id: taskId, user_id })));
+      }
+      const newlyMentioned = mentionedIds.filter((id) => !prevAssignees.includes(id));
+      if (newlyMentioned.length > 0) {
+        await notifyUsers(newlyMentioned, {
+          kind: "mention", title: "Você foi adicionado a uma tarefa", body: form.title, link: "/tasks", excludeUserId: user?.id,
+        });
+      }
+      if (editingId && form.status === "done" && wasStatus !== "done" && payload.created_by !== user?.id) {
+        // handled via move() for drag-and-drop; here covers status changed through the edit dialog
       }
     },
     onSuccess: () => {
@@ -116,6 +165,8 @@ function TasksPage() {
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
+      setMentionedIds([]);
+      setLinks([]);
       toast.success(editingId ? "Tarefa atualizada!" : "Tarefa criada!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -154,7 +205,7 @@ function TasksPage() {
       <PageHeader
         eyebrow="Operação"
         title={title}
-        description="Quadro Kanban com drag and drop. Atribua tarefas pelo e-mail do colaborador."
+        description="Quadro Kanban com drag and drop. Mencione colegas com @ para atribuir a tarefa a eles."
         actions={
           <div className="flex gap-2">
             {isAdmin && (
@@ -168,27 +219,42 @@ function TasksPage() {
                 </SelectContent>
               </Select>
             )}
-            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setMentionedIds([]); setLinks([]); } }}>
               <DialogTrigger asChild><Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Nova tarefa</Button></DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[85vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>{editingId ? "Editar tarefa" : "Nova tarefa"}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div><Label>Título *</Label><Input value={form.title} onChange={e => setForm({...form, title: e.target.value})} /></div>
-                  <div><Label>Descrição</Label><textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} rows={3} placeholder="Detalhes da tarefa, contexto, links…" className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" /></div>
                   <div>
-                    <Label>Atribuir para (e-mail do colaborador)</Label>
-                    <Select value={form.assignee_id || user?.id || ""} onValueChange={(v) => setForm({...form, assignee_id: v})}>
-                      <SelectTrigger><SelectValue placeholder="Selecione um colaborador" /></SelectTrigger>
-                      <SelectContent>
-                        {profiles?.map((p: any) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <span className="font-medium">{p.full_name ?? "—"}</span>
-                            <span className="ml-2 text-xs text-muted-foreground">{p.email}</span>
-                          </SelectItem>
+                    <Label>Descrição</Label>
+                    <MentionTextarea
+                      value={form.description}
+                      onChange={(v) => setForm({ ...form, description: v })}
+                      mentionedIds={mentionedIds}
+                      onMentionedIdsChange={setMentionedIds}
+                      profiles={profiles ?? []}
+                      rows={3}
+                      placeholder="Detalhes da tarefa… use @ para mencionar quem vai executar"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">A tarefa aparece no quadro de todas as pessoas mencionadas.</p>
+                  </div>
+                  <div>
+                    <Label>Links</Label>
+                    <div className="flex gap-2">
+                      <Input placeholder="Nome (ex: Drive)" value={linkLabel} onChange={e => setLinkLabel(e.target.value)} className="w-1/3" />
+                      <Input placeholder="https://…" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addLink())} />
+                      <Button type="button" variant="outline" onClick={addLink}><Plus className="h-4 w-4" /></Button>
+                    </div>
+                    {links.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {links.map((l, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-xs text-primary">
+                            <Link2 className="h-3 w-3" />{l.label}
+                            <button type="button" onClick={() => setLinks(links.filter((_, idx) => idx !== i))} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+                          </span>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="mt-1 text-[11px] text-muted-foreground">A tarefa aparecerá no quadro do colaborador escolhido.</p>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label>Prioridade</Label>
@@ -281,7 +347,10 @@ function TaskCard({ task, profiles, onEdit, onDelete }: {
     medium: "bg-blue-500/15 text-blue-300",
     low: "bg-slate-500/15 text-slate-300",
   };
-  const assignee = profiles.find((p) => p.id === task.assignee_id);
+  const assignees = (task.task_assignees ?? [])
+    .map((a: any) => profiles.find((p) => p.id === a.user_id))
+    .filter(Boolean);
+  const links: LinkItem[] = Array.isArray(task.links) ? task.links : [];
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}
       className={"surface-card group relative cursor-grab p-3 active:cursor-grabbing " + (isDragging ? "opacity-40" : "")}>
@@ -305,6 +374,17 @@ function TaskCard({ task, profiles, onEdit, onDelete }: {
       </div>
       <div className="pr-5 text-sm font-medium">{task.title}</div>
       {task.description && <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{task.description}</div>}
+      {links.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {links.map((l, i) => (
+            <a key={i} href={l.url} target="_blank" rel="noreferrer"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/20">
+              <Link2 className="h-2.5 w-2.5" />{l.label}
+            </a>
+          ))}
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + prio[task.priority]}>{task.priority}</span>
         <div className="flex items-center gap-2">
@@ -313,14 +393,17 @@ function TaskCard({ task, profiles, onEdit, onDelete }: {
               <Calendar className="h-3 w-3" />{shortDate(task.due_date)}
             </span>
           )}
-          {assignee ? (
-            <Avatar className="h-5 w-5">
-              <AvatarImage src={assignee.avatar_url ?? undefined} />
-              <AvatarFallback className="bg-primary/15 text-[9px] text-primary">{initials(assignee.full_name)}</AvatarFallback>
-            </Avatar>
-          ) : (
-            <User className="h-3 w-3 text-muted-foreground" />
-          )}
+          <div className="flex -space-x-1.5">
+            {assignees.slice(0, 3).map((a: any) => (
+              <Avatar key={a.id} className="h-5 w-5 border border-background">
+                <AvatarImage src={a.avatar_url ?? undefined} />
+                <AvatarFallback className="bg-primary/15 text-[9px] text-primary">{initials(a.full_name)}</AvatarFallback>
+              </Avatar>
+            ))}
+            {assignees.length > 3 && (
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-background bg-muted text-[8px]">+{assignees.length - 3}</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
