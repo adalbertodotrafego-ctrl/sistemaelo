@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/ui-extras/page";
 import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
@@ -14,7 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X } from "lucide-react";
+import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X, MessageCircle, Send } from "lucide-react";
 import { shortDate, initials } from "@/lib/format";
 import { notifyUsers } from "@/lib/notifications";
 import { toast } from "sonner";
@@ -54,6 +54,7 @@ function TasksPage() {
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [chatTask, setChatTask] = useState<any>(null);
   // For admins/managers: filter by member. Default = my own tasks.
   const [viewUserId, setViewUserId] = useState<string>("me");
 
@@ -295,7 +296,7 @@ function TasksPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map((col) => (
             <Column key={col.id} col={col} tasks={grouped[col.id]} profiles={profiles ?? []}
-              onEdit={openEdit} onDelete={setDeleteTarget} />
+              onEdit={openEdit} onDelete={setDeleteTarget} onChat={setChatTask} />
           ))}
         </div>
       </DndContext>
@@ -314,13 +315,17 @@ function TasksPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {chatTask && (
+        <TaskChatDialog task={chatTask} profiles={profiles ?? []} currentUserId={user?.id} onClose={() => setChatTask(null)} />
+      )}
     </div>
   );
 }
 
-function Column({ col, tasks, profiles, onEdit, onDelete }: {
+function Column({ col, tasks, profiles, onEdit, onDelete, onChat }: {
   col: typeof COLUMNS[number]; tasks: any[]; profiles: any[];
-  onEdit: (task: any) => void; onDelete: (task: any) => void;
+  onEdit: (task: any) => void; onDelete: (task: any) => void; onChat: (task: any) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: col.id });
   return (
@@ -330,14 +335,14 @@ function Column({ col, tasks, profiles, onEdit, onDelete }: {
         <span className="text-xs text-muted-foreground">{tasks.length}</span>
       </div>
       <div className="space-y-2">
-        {tasks.map((t) => <TaskCard key={t.id} task={t} profiles={profiles} onEdit={onEdit} onDelete={onDelete} />)}
+        {tasks.map((t) => <TaskCard key={t.id} task={t} profiles={profiles} onEdit={onEdit} onDelete={onDelete} onChat={onChat} />)}
       </div>
     </div>
   );
 }
 
-function TaskCard({ task, profiles, onEdit, onDelete }: {
-  task: any; profiles: any[]; onEdit: (task: any) => void; onDelete: (task: any) => void;
+function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
+  task: any; profiles: any[]; onEdit: (task: any) => void; onDelete: (task: any) => void; onChat: (task: any) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
@@ -365,6 +370,7 @@ function TaskCard({ task, profiles, onEdit, onDelete }: {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+            <DropdownMenuItem onClick={() => onChat(task)}><MessageCircle className="mr-2 h-3.5 w-3.5" />Comentários</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit(task)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onDelete(task)} className="text-destructive focus:text-destructive">
               <Trash2 className="mr-2 h-3.5 w-3.5" />Excluir
@@ -407,5 +413,104 @@ function TaskCard({ task, profiles, onEdit, onDelete }: {
         </div>
       </div>
     </div>
+  );
+}
+
+function TaskChatDialog({ task, profiles, currentUserId, onClose }: {
+  task: any; profiles: any[]; currentUserId?: string; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [message, setMessage] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { data: comments } = useQuery({
+    queryKey: ["task-comments", task.id],
+    queryFn: async () => (await supabase.from("task_comments").select("*").eq("task_id", task.id).order("created_at", { ascending: true })).data ?? [],
+  });
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`task-comments-${task.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "task_comments", filter: `task_id=eq.${task.id}` }, () => {
+        qc.invalidateQueries({ queryKey: ["task-comments", task.id] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [task.id, qc]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [comments]);
+
+  const assignees = (task.task_assignees ?? [])
+    .map((a: any) => profiles.find((p: any) => p.id === a.user_id))
+    .filter(Boolean);
+
+  const send = useMutation({
+    mutationFn: async () => {
+      const body = message.trim();
+      if (!body) return;
+      const { error } = await supabase.from("task_comments").insert({ task_id: task.id, author_id: currentUserId, body });
+      if (error) throw error;
+      const assigneeIds = (task.task_assignees ?? []).map((a: any) => a.user_id);
+      await notifyUsers(assigneeIds, {
+        kind: "task", title: `Nova mensagem em "${task.title}"`, body, link: "/tasks", excludeUserId: currentUserId,
+      });
+    },
+    onSuccess: () => { setMessage(""); qc.invalidateQueries({ queryKey: ["task-comments", task.id] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="flex max-h-[85vh] flex-col">
+        <DialogHeader><DialogTitle>Comentários — {task.title}</DialogTitle></DialogHeader>
+        {assignees.length > 0 && (
+          <div className="-mt-2 flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground">Participantes:</span>
+            <div className="flex -space-x-1.5">
+              {assignees.map((a: any) => (
+                <Avatar key={a.id} className="h-5 w-5 border border-background">
+                  <AvatarImage src={a.avatar_url ?? undefined} />
+                  <AvatarFallback className="bg-primary/15 text-[9px] text-primary">{initials(a.full_name)}</AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={scrollRef} className="min-h-[240px] max-h-[400px] flex-1 space-y-3 overflow-y-auto rounded-md border border-border/50 bg-surface-2 p-3">
+          {(!comments || comments.length === 0) ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma mensagem ainda. Comece a conversa!</p>
+          ) : comments.map((c: any) => {
+            const author = profiles.find((p: any) => p.id === c.author_id);
+            const mine = c.author_id === currentUserId;
+            return (
+              <div key={c.id} className={"flex gap-2 " + (mine ? "flex-row-reverse" : "")}>
+                <Avatar className="h-6 w-6 shrink-0">
+                  <AvatarImage src={author?.avatar_url ?? undefined} />
+                  <AvatarFallback className="bg-primary/15 text-[9px] text-primary">{initials(author?.full_name)}</AvatarFallback>
+                </Avatar>
+                <div className={"max-w-[75%] rounded-lg px-3 py-1.5 text-sm " + (mine ? "bg-primary text-primary-foreground" : "border border-border/50 bg-surface")}>
+                  {!mine && <div className="text-[10px] font-semibold text-muted-foreground">{author?.full_name ?? "—"}</div>}
+                  <div className="whitespace-pre-wrap break-words">{c.body}</div>
+                  <div className={"mt-0.5 text-[9px] " + (mine ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                    {new Date(c.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send.mutate(); } }}
+            placeholder="Escreva uma mensagem…"
+          />
+          <Button onClick={() => send.mutate()} disabled={!message.trim() || send.isPending}><Send className="h-4 w-4" /></Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
