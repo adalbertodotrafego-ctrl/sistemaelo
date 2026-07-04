@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   LayoutDashboard, Users, Kanban, FolderKanban, ListChecks, CalendarDays,
   UserCog, Wallet, Megaphone, Video, FolderOpen, BarChart3, Target,
@@ -55,13 +55,13 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</div>
       </Link>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+      <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-5">
         {filteredNav.map((section) => (
-          <div key={section.group}>
-            <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <div key={section.group} className="rounded-xl border border-sidebar-border/60 bg-sidebar-accent/[0.04] p-2">
+            <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
               {section.group}
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {section.items.map((item) => {
                 const active = pathname === item.to || pathname.startsWith(item.to + "/");
                 return (
@@ -70,20 +70,22 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
                     to={item.to}
                     onClick={onMobileClose}
                     className={cn(
-                      "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                      "group flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-sm font-medium transition-all",
                       active
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                        ? "border-primary/30 bg-primary/10 text-primary"
+                        : "border-transparent text-sidebar-foreground/80 hover:border-sidebar-border hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                     )}
                   >
-                    {active && (
-                      <motion.span
-                        layoutId="sidebar-active"
-                        className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-primary glow-primary"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      />
-                    )}
-                    <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+                    <span
+                      className={cn(
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors",
+                        active
+                          ? "border-primary/30 bg-primary/15 text-primary"
+                          : "border-sidebar-border/60 bg-sidebar/60 text-muted-foreground group-hover:border-sidebar-border group-hover:text-sidebar-accent-foreground",
+                      )}
+                    >
+                      <item.icon className="h-3.5 w-3.5" />
+                    </span>
                     <span className="truncate">{item.label}</span>
                   </Link>
                 );
