@@ -16,7 +16,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X, MessageCircle, Send, Paperclip } from "lucide-react";
+import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X, MessageCircle, Send, Paperclip, Eye, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { shortDate, initials, tagColor } from "@/lib/format";
 import { notifyUsers } from "@/lib/notifications";
 import { uploadTaskFile, type Attachment } from "@/lib/storage";
@@ -62,6 +63,7 @@ function TasksPage() {
   const [tagInput, setTagInput] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [chatTask, setChatTask] = useState<any>(null);
+  const [viewTask, setViewTask] = useState<any>(null);
   // For admins/managers: filter by member. Default = my own tasks.
   const [viewUserId, setViewUserId] = useState<string>("me");
 
@@ -384,7 +386,7 @@ function TasksPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map((col) => (
             <Column key={col.id} col={col} tasks={grouped[col.id]} profiles={profiles ?? []}
-              onEdit={openEdit} onDelete={setDeleteTarget} onChat={setChatTask} />
+              onEdit={openEdit} onDelete={setDeleteTarget} onChat={setChatTask} onView={setViewTask} />
           ))}
         </div>
       </DndContext>
@@ -407,13 +409,23 @@ function TasksPage() {
       {chatTask && (
         <TaskChatDialog task={chatTask} profiles={profiles ?? []} currentUserId={user?.id} onClose={() => setChatTask(null)} />
       )}
+
+      {viewTask && (
+        <TaskViewDialog
+          task={viewTask}
+          profiles={profiles ?? []}
+          onClose={() => setViewTask(null)}
+          onEdit={(t) => { setViewTask(null); openEdit(t); }}
+          onChat={(t) => { setViewTask(null); setChatTask(t); }}
+        />
+      )}
     </div>
   );
 }
 
-function Column({ col, tasks, profiles, onEdit, onDelete, onChat }: {
+function Column({ col, tasks, profiles, onEdit, onDelete, onChat, onView }: {
   col: typeof COLUMNS[number]; tasks: any[]; profiles: any[];
-  onEdit: (task: any) => void; onDelete: (task: any) => void; onChat: (task: any) => void;
+  onEdit: (task: any) => void; onDelete: (task: any) => void; onChat: (task: any) => void; onView: (task: any) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: col.id });
   return (
@@ -423,14 +435,14 @@ function Column({ col, tasks, profiles, onEdit, onDelete, onChat }: {
         <span className="text-xs text-muted-foreground">{tasks.length}</span>
       </div>
       <div className="space-y-2">
-        {tasks.map((t) => <TaskCard key={t.id} task={t} profiles={profiles} onEdit={onEdit} onDelete={onDelete} onChat={onChat} />)}
+        {tasks.map((t) => <TaskCard key={t.id} task={t} profiles={profiles} onEdit={onEdit} onDelete={onDelete} onChat={onChat} onView={onView} />)}
       </div>
     </div>
   );
 }
 
-function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
-  task: any; profiles: any[]; onEdit: (task: any) => void; onDelete: (task: any) => void; onChat: (task: any) => void;
+function TaskCard({ task, profiles, onEdit, onDelete, onChat, onView }: {
+  task: any; profiles: any[]; onEdit: (task: any) => void; onDelete: (task: any) => void; onChat: (task: any) => void; onView: (task: any) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
@@ -460,6 +472,7 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onPointerDown={(e) => e.stopPropagation()}>
+            <DropdownMenuItem onClick={() => onView(task)}><Eye className="mr-2 h-3.5 w-3.5" />Visualizar</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onChat(task)}><MessageCircle className="mr-2 h-3.5 w-3.5" />Comentários</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit(task)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onDelete(task)} className="text-destructive focus:text-destructive">
@@ -517,6 +530,106 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
         </div>
       </div>
     </div>
+  );
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  todo: "A fazer", in_progress: "Em andamento", review: "Revisão", done: "Concluído", canceled: "Cancelado",
+};
+const PRIORITY_LABELS: Record<string, string> = {
+  low: "Baixa", medium: "Média", high: "Alta", urgent: "Urgente",
+};
+
+function TaskViewDialog({ task, profiles, onClose, onEdit, onChat }: {
+  task: any; profiles: any[]; onClose: () => void; onEdit: (task: any) => void; onChat: (task: any) => void;
+}) {
+  const assignees = (task.task_assignees ?? [])
+    .map((a: any) => profiles.find((p: any) => p.id === a.user_id))
+    .filter(Boolean);
+  const links: LinkItem[] = Array.isArray(task.links) ? task.links : [];
+  const taskAttachments: Attachment[] = Array.isArray(task.attachments) ? task.attachments : [];
+  const taskTags: string[] = Array.isArray(task.tags) ? task.tags : [];
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle className="pr-6">{task.title}</DialogTitle></DialogHeader>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="secondary">{STATUS_LABELS[task.status] ?? task.status}</Badge>
+          <Badge variant="outline" className="capitalize">{PRIORITY_LABELS[task.priority] ?? task.priority}</Badge>
+          {task.due_date && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Calendar className="h-3 w-3" />Vence em {shortDate(task.due_date)}
+            </span>
+          )}
+        </div>
+
+        {taskTags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {taskTags.map((t) => (
+              <span key={t} className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider" style={tagColor(t)}>{t}</span>
+            ))}
+          </div>
+        )}
+
+        {task.description ? (
+          <div>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Descrição</Label>
+            <div className="mt-1 rounded-md border border-border/50 bg-surface-2 p-3 text-sm">
+              <FormattedText text={task.description} className="whitespace-pre-wrap break-words" />
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Sem descrição.</p>
+        )}
+
+        {links.length > 0 && (
+          <div>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Links</Label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {links.map((l, i) => (
+                <a key={i} href={l.url} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-surface px-2.5 py-1.5 text-xs font-medium transition hover:border-primary/40 hover:text-primary">
+                  <ExternalLink className="h-3 w-3" />{l.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {taskAttachments.length > 0 && (
+          <div>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Arquivos e imagens</Label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {taskAttachments.map((a) => <AttachmentChip key={a.path} attachment={a} />)}
+            </div>
+          </div>
+        )}
+
+        {assignees.length > 0 && (
+          <div>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Colaboradores</Label>
+            <div className="mt-1 space-y-1">
+              {assignees.map((a: any) => (
+                <div key={a.id} className="flex items-center gap-2 text-sm">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={a.avatar_url ?? undefined} />
+                    <AvatarFallback className="bg-primary/15 text-[9px] text-primary">{initials(a.full_name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate">{a.full_name ?? a.email}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onChat(task)}><MessageCircle className="mr-2 h-4 w-4" />Comentários</Button>
+          <Button onClick={() => onEdit(task)}><Pencil className="mr-2 h-4 w-4" />Editar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

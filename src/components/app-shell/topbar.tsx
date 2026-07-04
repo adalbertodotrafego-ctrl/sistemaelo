@@ -12,6 +12,7 @@ import { initials } from "@/lib/format";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/use-theme";
+import { MessagesButton } from "./messages";
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const navigate = useNavigate();
@@ -78,6 +79,8 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       <button onClick={toggle} className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Alternar tema">
         {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
       </button>
+
+      <MessagesButton />
 
       <Link to="/notifications" className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
         <Bell className="h-5 w-5" />

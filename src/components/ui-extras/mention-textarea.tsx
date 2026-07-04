@@ -13,7 +13,7 @@ const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 // people also show as removable chips below, since editing the text alone can't
 // reliably signal an intentional "un-mention".
 export function MentionTextarea({
-  value, onChange, mentionedIds, onMentionedIdsChange, profiles, rows = 3, placeholder, enableFormatting = false,
+  value, onChange, mentionedIds, onMentionedIdsChange, profiles, rows = 3, placeholder, enableFormatting = false, onEnter,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -24,6 +24,8 @@ export function MentionTextarea({
   placeholder?: string;
   /** Adds a bold/italic toolbar that wraps the selection in **markdown-lite** markers. */
   enableFormatting?: boolean;
+  /** Chat mode: Enter submits (Shift+Enter still inserts a newline). Suppressed while the mention picker is open. */
+  onEnter?: () => void;
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +101,12 @@ export function MentionTextarea({
         placeholder={placeholder ?? "Escreva… use @ para mencionar alguém do time"}
         onChange={(e) => { onChange(e.target.value); updateFromCaret(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
         onKeyUp={(e) => { const el = e.currentTarget; updateFromCaret(el.value, el.selectionStart ?? el.value.length); }}
+        onKeyDown={(e) => {
+          if (onEnter && e.key === "Enter" && !e.shiftKey && query === null) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
         onBlur={() => setTimeout(() => setQuery(null), 150)}
       />
       {query !== null && matches.length > 0 && (
