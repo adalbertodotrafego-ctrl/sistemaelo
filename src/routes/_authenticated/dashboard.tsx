@@ -34,10 +34,11 @@ function Dashboard() {
       const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-      const tasksQuery = isAdmin
-        ? supabase.from("tasks").select("*", { count: "exact", head: true }).neq("status", "done")
-        : (supabase as any).from("tasks").select("*, task_assignees!inner(user_id)", { count: "exact", head: true })
-            .eq("task_assignees.user_id", user!.id).neq("status", "done");
+      // Always personal, even for admins — the board still shows everything,
+      // but "pendentes" on the dashboard should be *your* workload.
+      const tasksQuery = (supabase as any).from("tasks")
+        .select("*, task_assignees!inner(user_id)", { count: "exact", head: true })
+        .eq("task_assignees.user_id", user!.id).neq("status", "done");
 
       const meetingsQueryBase = supabase.from("events").select("*", { count: "exact", head: true })
         .eq("type", "meeting").gte("start_at", today.toISOString()).lt("start_at", tomorrow.toISOString());
@@ -87,15 +88,9 @@ function Dashboard() {
   });
 
   const { data: tasks } = useQuery({
-    queryKey: ["dashboard-tasks", isAdmin, user?.id],
+    queryKey: ["dashboard-tasks", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      if (isAdmin) {
-        const { data } = await supabase
-          .from("tasks").select("id,title,status,priority,due_date")
-          .neq("status","done").order("due_date",{ ascending: true, nullsFirst: false }).limit(6);
-        return data ?? [];
-      }
       const { data } = await (supabase as any)
         .from("tasks").select("id,title,status,priority,due_date, task_assignees!inner(user_id)")
         .eq("task_assignees.user_id", user!.id)
@@ -108,17 +103,24 @@ function Dashboard() {
     queryKey: ["dashboard-trend"],
     enabled: showFinance,
     queryFn: async () => {
-      const out: { month: string; receita: number }[] = [];
+      // One query for the whole 6-month window, bucketed client-side —
+      // this used to be 6 sequential round-trips.
       const now = new Date();
+      const windowStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const { data } = await supabase.from("finance_entries").select("amount, paid_at")
+        .eq("kind","income")
+        .gte("paid_at", windowStart.toISOString().slice(0,10))
+        .not("paid_at", "is", null);
+      const buckets = new Map<string, number>();
+      for (const r of data ?? []) {
+        const key = String(r.paid_at).slice(0, 7);
+        buckets.set(key, (buckets.get(key) ?? 0) + Number(r.amount ?? 0));
+      }
+      const out: { month: string; receita: number }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const next = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-        const { data } = await supabase.from("finance_entries").select("amount")
-          .eq("kind","income")
-          .gte("paid_at", d.toISOString().slice(0,10))
-          .lt("paid_at", next.toISOString().slice(0,10));
-        const sum = (data ?? []).reduce((s, r: any) => s + Number(r.amount ?? 0), 0);
-        out.push({ month: d.toLocaleDateString("pt-BR",{month:"short"}), receita: sum });
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        out.push({ month: d.toLocaleDateString("pt-BR",{month:"short"}), receita: buckets.get(key) ?? 0 });
       }
       return out;
     },
@@ -148,7 +150,7 @@ function Dashboard() {
         {showProjects && <StatCard label="Projetos ativos" value={stats?.projectsActive ?? "—"} icon={FolderKanban} accent="primary" />}
         {showProjects && <StatCard label="Projetos concluídos" value={stats?.projectsDone ?? "—"} icon={Sparkles} accent="success" />}
         {showFinance && <StatCard label="Receita do mês" value={brl(stats?.income ?? 0)} icon={Wallet} accent="success" />}
-        <StatCard label={isAdmin ? "Tarefas pendentes" : "Minhas tarefas pendentes"} value={stats?.tasksPending ?? "—"} icon={ListChecks} accent="warning" />
+        <StatCard label="Minhas tarefas pendentes" value={stats?.tasksPending ?? "—"} icon={ListChecks} accent="warning" />
         <StatCard label={isAdmin ? "Reuniões hoje" : "Minhas reuniões hoje"} value={stats?.meetingsToday ?? "—"} icon={Video} accent="primary" />
         {showCrm && <StatCard label="Leads em andamento" value={stats?.leads ?? "—"} icon={ArrowUpRight} accent="primary" />}
         {showMarketing && <StatCard label="Campanhas" value={stats?.campaigns ?? "—"} icon={Megaphone} accent="primary" />}
@@ -215,7 +217,7 @@ function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="surface-card p-6">
           <div className="mb-4 flex items-center justify-between">
-            <div className="font-display text-lg font-semibold">{isAdmin ? "Tarefas em aberto" : "Minhas tarefas em aberto"}</div>
+            <div className="font-display text-lg font-semibold">Minhas tarefas em aberto</div>
             <Link to="/tasks" className="text-xs text-primary hover:underline">Abrir Kanban</Link>
           </div>
           <div className="divide-y divide-border/60">
