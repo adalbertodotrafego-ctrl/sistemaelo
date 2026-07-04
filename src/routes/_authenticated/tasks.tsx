@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, Calendar, MoreVertical, Pencil, Trash2, Link2, X, MessageCircle, Send, Paperclip } from "lucide-react";
-import { shortDate, initials } from "@/lib/format";
+import { shortDate, initials, tagColor } from "@/lib/format";
 import { notifyUsers } from "@/lib/notifications";
 import { uploadTaskFile, type Attachment } from "@/lib/storage";
 import { toast } from "sonner";
@@ -58,6 +58,8 @@ function TasksPage() {
   const [linkUrl, setLinkUrl] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [chatTask, setChatTask] = useState<any>(null);
   // For admins/managers: filter by member. Default = my own tasks.
@@ -113,6 +115,7 @@ function TasksPage() {
     setLinkLabel(""); setLinkUrl("");
     setAttachments([]);
     setPendingFiles([]);
+    setTags([]); setTagInput("");
     setOpen(true);
   };
 
@@ -127,6 +130,7 @@ function TasksPage() {
     setLinkLabel(""); setLinkUrl("");
     setAttachments(Array.isArray(task.attachments) ? task.attachments : []);
     setPendingFiles([]);
+    setTags(Array.isArray(task.tags) ? task.tags : []); setTagInput("");
     setOpen(true);
   };
 
@@ -137,9 +141,16 @@ function TasksPage() {
     setLinkLabel(""); setLinkUrl("");
   };
 
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (!t || tags.some((x) => x.toLowerCase() === t.toLowerCase())) { setTagInput(""); return; }
+    setTags([...tags, t]);
+    setTagInput("");
+  };
+
   const save = useMutation({
     mutationFn: async () => {
-      const payload: any = { ...form, links, attachments };
+      const payload: any = { ...form, links, attachments, tags };
       if (!payload.due_date) payload.due_date = null;
       const wasStatus = editingId ? tasks?.find((t: any) => t.id === editingId)?.status : null;
       let taskId = editingId;
@@ -185,6 +196,7 @@ function TasksPage() {
       setLinks([]);
       setAttachments([]);
       setPendingFiles([]);
+      setTags([]); setTagInput("");
       toast.success(editingId ? "Tarefa atualizada!" : "Tarefa criada!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -237,7 +249,7 @@ function TasksPage() {
                 </SelectContent>
               </Select>
             )}
-            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setMentionedIds([]); setLinks([]); setAttachments([]); setPendingFiles([]); } }}>
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setMentionedIds([]); setLinks([]); setAttachments([]); setPendingFiles([]); setTags([]); setTagInput(""); } }}>
               <DialogTrigger asChild><Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Nova tarefa</Button></DialogTrigger>
               <DialogContent className="max-h-[85vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>{editingId ? "Editar tarefa" : "Nova tarefa"}</DialogTitle></DialogHeader>
@@ -256,6 +268,28 @@ function TasksPage() {
                       enableFormatting
                     />
                     <p className="mt-1 text-[11px] text-muted-foreground">A tarefa aparece no quadro de todas as pessoas mencionadas. **negrito**, _itálico_.</p>
+                  </div>
+                  <div>
+                    <Label>Tags</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Digite e aperte Enter (ex: Urgente, Design…)"
+                        value={tagInput}
+                        onChange={e => setTagInput(e.target.value)}
+                        onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addTag())}
+                      />
+                      <Button type="button" variant="outline" onClick={addTag}><Plus className="h-4 w-4" /></Button>
+                    </div>
+                    {tags.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {tags.map((t) => (
+                          <span key={t} className="inline-flex items-center gap-1 rounded-full py-0.5 pl-2 pr-1 text-xs" style={tagColor(t)}>
+                            {t}
+                            <button type="button" onClick={() => setTags(tags.filter((x) => x !== t))} className="ml-0.5 hover:opacity-70"><X className="h-3 w-3" /></button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label>Links</Label>
@@ -396,6 +430,7 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
     .filter(Boolean);
   const links: LinkItem[] = Array.isArray(task.links) ? task.links : [];
   const taskAttachments: Attachment[] = Array.isArray(task.attachments) ? task.attachments : [];
+  const taskTags: string[] = Array.isArray(task.tags) ? task.tags : [];
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}
       className={"surface-card group relative cursor-grab p-3 active:cursor-grabbing " + (isDragging ? "opacity-40" : "")}>
@@ -418,6 +453,13 @@ function TaskCard({ task, profiles, onEdit, onDelete, onChat }: {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {taskTags.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1 pr-5">
+          {taskTags.map((t) => (
+            <span key={t} className="rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider" style={tagColor(t)}>{t}</span>
+          ))}
+        </div>
+      )}
       <div className="pr-5 text-sm font-medium">{task.title}</div>
       {task.description && (
         <FormattedText text={task.description} className="mt-1 line-clamp-2 text-xs text-muted-foreground" />
