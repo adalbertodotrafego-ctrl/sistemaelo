@@ -70,6 +70,21 @@ function TasksPage() {
     queryFn: async () => (await supabase.from("profiles").select("id, full_name, email, avatar_url").order("full_name")).data ?? [],
   });
 
+  // Done tasks older than 24h clean themselves up whenever someone has this
+  // page open — no server-side cron needed (that would require pg_cron,
+  // which isn't available on every Supabase plan).
+  useEffect(() => {
+    const cleanup = () => {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      supabase.from("tasks").delete().eq("status", "done").lt("updated_at", cutoff)
+        .then(() => qc.invalidateQueries({ queryKey: ["tasks"] }));
+    };
+    cleanup();
+    const id = setInterval(cleanup, 30 * 60 * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const myProfile = profiles?.find((p: any) => p.id === user?.id);
   const effectiveUserId = viewUserId === "me" ? user?.id : viewUserId;
   const viewProfile = profiles?.find((p: any) => p.id === effectiveUserId);
