@@ -1,12 +1,18 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, EmptyState } from "@/components/ui-extras/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bell, BellRing, BellOff, CheckCheck } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Bell, BellRing, BellOff, CheckCheck, Trash2 } from "lucide-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/notifications")({
@@ -17,7 +23,9 @@ export const Route = createFileRoute("/_authenticated/notifications")({
 function NotificationsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { user } = useCurrentUser();
   const push = usePushNotifications();
+  const [confirmClear, setConfirmClear] = useState(false);
   const { data } = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => (await supabase.from("notifications").select("*").order("created_at", { ascending: false })).data ?? [],
@@ -28,6 +36,20 @@ function NotificationsPage() {
       await supabase.from("notifications").update({ read_at: new Date().toISOString() }).is("read_at", null);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
+  const clearAll = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) return;
+      const { error } = await supabase.from("notifications").delete().eq("user_id", user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      setConfirmClear(false);
+      toast.success("Notificações limpas!");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const markRead = useMutation({
@@ -67,9 +89,28 @@ function NotificationsPage() {
               )
             )}
             <Button variant="outline" onClick={() => markAll.mutate()}><CheckCheck className="mr-2 h-4 w-4" />Marcar todas como lidas</Button>
+            <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmClear(true)} disabled={!data || data.length === 0}>
+              <Trash2 className="mr-2 h-4 w-4" />Limpar notificações
+            </Button>
           </>
         }
       />
+
+      <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Limpar todas as notificações?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai excluir permanentemente todas as suas notificações, lidas ou não. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => clearAll.mutate()}>Limpar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {!data || data.length === 0 ? (
         <EmptyState icon={Bell} title="Nenhuma notificação" description="Você está em dia. Avisos chegarão por aqui." />
       ) : (
