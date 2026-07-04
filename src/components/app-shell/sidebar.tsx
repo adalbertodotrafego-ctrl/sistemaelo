@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Users, Kanban, FolderKanban, ListChecks, CalendarDays,
   UserCog, Wallet, Megaphone, Video, FolderOpen, BarChart3, Target,
-  Bell, Settings, User as UserIcon, Sparkles, X, FileText, Image,
+  Bell, Settings, User as UserIcon, X, FileText, Image,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -48,14 +48,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
 
   const content = (
     <div className="flex h-full flex-col">
-      <Link to="/dashboard" className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary glow-primary">
-          <Sparkles className="h-5 w-5 text-primary-foreground" />
+      <Link to="/dashboard" className="flex h-16 flex-col justify-center border-b border-sidebar-border px-5 leading-tight">
+        <div className="font-display text-base font-bold tracking-tight">
+          Sistema Elo<span className="text-primary"> Marketing</span>
         </div>
-        <div className="leading-tight">
-          <div className="font-display text-sm font-semibold">Sistema Elo Marketing</div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Operating System</div>
-        </div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</div>
       </Link>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">

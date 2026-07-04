@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Entrar — Sistema Elo Marketing" }] }),
@@ -77,11 +77,11 @@ function AuthPage() {
         transition={{ duration: 0.5 }}
         className="surface-card w-full max-w-md p-8"
       >
-        <Link to="/" className="mb-6 flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary glow-primary">
-            <Sparkles className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="font-display text-lg font-semibold">Sistema Elo Marketing</span>
+        <Link to="/" className="mb-6 flex flex-col leading-tight">
+          <span className="font-display text-xl font-bold tracking-tight">
+            Sistema Elo<span className="text-primary"> Marketing</span>
+          </span>
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</span>
         </Link>
 
         <Tabs defaultValue="signin">
