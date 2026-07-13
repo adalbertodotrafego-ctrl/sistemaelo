@@ -8,7 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FolderOpen, FolderPlus, Upload, Download, ChevronRight, File as FileIcon, Image as ImageIcon, FileText } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  FolderOpen, FolderPlus, Upload, Download, ChevronRight, File as FileIcon,
+  Image as ImageIcon, FileText, MoreVertical, Pencil, Trash2, Eye, ExternalLink,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/files")({
@@ -39,6 +47,17 @@ function FilesPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  const [editFolderTarget, setEditFolderTarget] = useState<any>(null);
+  const [editFolderForm, setEditFolderForm] = useState({ name: "", client_id: "" });
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<any>(null);
+
+  const [editFileTarget, setEditFileTarget] = useState<any>(null);
+  const [editFileForm, setEditFileForm] = useState({ name: "", client_id: "" });
+  const [deleteFileTarget, setDeleteFileTarget] = useState<any>(null);
+
+  const [previewFile, setPreviewFile] = useState<any>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const { data: folders } = useQuery({
     queryKey: ["folders"],
@@ -94,10 +113,88 @@ function FilesPage() {
     onError: (e: Error) => { setUploading(false); toast.error(e.message); },
   });
 
+  const updateFolder = useMutation({
+    mutationFn: async () => {
+      if (!editFolderTarget) return;
+      const { error } = await supabase.from("folders")
+        .update({ name: editFolderForm.name, client_id: editFolderForm.client_id || null })
+        .eq("id", editFolderTarget.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["folders"] });
+      setEditFolderTarget(null);
+      toast.success("Pasta atualizada!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteFolder = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("folders").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["folders"] });
+      qc.invalidateQueries({ queryKey: ["files"] });
+      setDeleteFolderTarget(null);
+      toast.success("Pasta excluída!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateFile = useMutation({
+    mutationFn: async () => {
+      if (!editFileTarget) return;
+      const { error } = await supabase.from("files")
+        .update({ name: editFileForm.name, client_id: editFileForm.client_id || null })
+        .eq("id", editFileTarget.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["files"] });
+      setEditFileTarget(null);
+      toast.success("Arquivo atualizado!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteFile = useMutation({
+    mutationFn: async (f: any) => {
+      const { error } = await supabase.from("files").delete().eq("id", f.id);
+      if (error) throw error;
+      await supabase.storage.from("project-files").remove([f.path]);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["files"] });
+      setDeleteFileTarget(null);
+      toast.success("Arquivo excluído!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const download = async (path: string) => {
     const { data, error } = await supabase.storage.from("project-files").createSignedUrl(path, 60);
     if (error) return toast.error(error.message);
     window.open(data.signedUrl, "_blank");
+  };
+
+  const openPreview = async (f: any) => {
+    setPreviewFile(f);
+    setPreviewUrl(null);
+    const { data, error } = await supabase.storage.from("project-files").createSignedUrl(f.path, 300);
+    if (error) { toast.error(error.message); setPreviewFile(null); return; }
+    setPreviewUrl(data.signedUrl);
+  };
+
+  const openEditFolder = (f: any) => {
+    setEditFolderTarget(f);
+    setEditFolderForm({ name: f.name ?? "", client_id: f.client_id ?? "" });
+  };
+
+  const openEditFile = (f: any) => {
+    setEditFileTarget(f);
+    setEditFileForm({ name: f.name ?? "", client_id: f.client_id ?? "" });
   };
 
   const breadcrumb: any[] = [];
@@ -164,30 +261,153 @@ function FilesPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {currentFolders.map((f: any) => (
-            <button key={f.id} onClick={() => setParentId(f.id)}
-              className="surface-card flex items-center gap-3 p-4 text-left transition hover:border-primary/40 hover:shadow-elegant">
-              <div className="rounded-lg bg-amber-500/15 p-2 text-amber-400"><FolderOpen className="h-5 w-5" /></div>
-              <div className="min-w-0">
-                <div className="truncate font-medium">{f.name}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{f.clients?.name ?? "Pasta"}</div>
-              </div>
-            </button>
+            <div key={f.id} className="surface-card group relative flex items-center gap-3 p-4 text-left transition hover:border-primary/40 hover:shadow-elegant">
+              <button onClick={() => setParentId(f.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <div className="rounded-lg bg-amber-500/15 p-2 text-amber-400"><FolderOpen className="h-5 w-5" /></div>
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{f.name}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{f.clients?.name ?? "Pasta"}</div>
+                </div>
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openEditFolder(f)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDeleteFolderTarget(f)} className="text-destructive focus:text-destructive">
+                    <Trash2 className="mr-2 h-3.5 w-3.5" />Excluir
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           ))}
           {currentFiles.map((f: any) => {
             const Icon = fileIcon(f.mime);
             return (
-              <div key={f.id} className="surface-card flex items-center gap-3 p-4">
+              <div key={f.id} className="surface-card group flex items-center gap-3 p-4">
                 <div className="rounded-lg bg-primary/10 p-2 text-primary"><Icon className="h-5 w-5" /></div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{f.name}</div>
                   <div className="truncate text-[11px] text-muted-foreground">{fmtSize(f.size)}</div>
                 </div>
-                <Button size="icon" variant="ghost" onClick={() => download(f.path)}><Download className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" onClick={() => download(f.path)} title="Baixar"><Download className="h-4 w-4" /></Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openPreview(f)}><Eye className="mr-2 h-3.5 w-3.5" />Visualizar</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openEditFile(f)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDeleteFileTarget(f)} className="text-destructive focus:text-destructive">
+                      <Trash2 className="mr-2 h-3.5 w-3.5" />Excluir
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Editar pasta */}
+      <Dialog open={!!editFolderTarget} onOpenChange={(v) => !v && setEditFolderTarget(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar pasta</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome *</Label><Input value={editFolderForm.name} onChange={e => setEditFolderForm({ ...editFolderForm, name: e.target.value })} /></div>
+            <div><Label>Cliente (opcional)</Label>
+              <Select value={editFolderForm.client_id} onValueChange={v => setEditFolderForm({ ...editFolderForm, client_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>{(clients ?? []).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditFolderTarget(null)}>Cancelar</Button>
+            <Button onClick={() => updateFolder.mutate()} disabled={!editFolderForm.name || updateFolder.isPending}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar arquivo */}
+      <Dialog open={!!editFileTarget} onOpenChange={(v) => !v && setEditFileTarget(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar arquivo</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome *</Label><Input value={editFileForm.name} onChange={e => setEditFileForm({ ...editFileForm, name: e.target.value })} /></div>
+            <div><Label>Cliente (opcional)</Label>
+              <Select value={editFileForm.client_id} onValueChange={v => setEditFileForm({ ...editFileForm, client_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>{(clients ?? []).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditFileTarget(null)}>Cancelar</Button>
+            <Button onClick={() => updateFile.mutate()} disabled={!editFileForm.name || updateFile.isPending}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Visualizar arquivo */}
+      <Dialog open={!!previewFile} onOpenChange={(v) => { if (!v) { setPreviewFile(null); setPreviewUrl(null); } }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="truncate">{previewFile?.name}</DialogTitle></DialogHeader>
+          {!previewUrl ? (
+            <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">Carregando…</div>
+          ) : previewFile?.mime?.startsWith("image/") ? (
+            <img src={previewUrl} alt={previewFile?.name} className="max-h-[70vh] w-full rounded-lg object-contain" />
+          ) : previewFile?.mime?.includes("pdf") ? (
+            <iframe src={previewUrl} className="h-[70vh] w-full rounded-lg border border-border/60" title={previewFile?.name} />
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
+              <p>Pré-visualização não disponível para este tipo de arquivo.</p>
+              <Button variant="outline" onClick={() => window.open(previewUrl, "_blank")}>
+                <ExternalLink className="mr-2 h-4 w-4" />Abrir em nova aba
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteFolderTarget} onOpenChange={(v) => !v && setDeleteFolderTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir pasta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai excluir "{deleteFolderTarget?.name}" e todas as subpastas dentro dela. Os arquivos que estavam
+              nela não são apagados — ficam movidos para a raiz. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteFolder.mutate(deleteFolderTarget.id)}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteFileTarget} onOpenChange={(v) => !v && setDeleteFileTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir arquivo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai excluir "{deleteFileTarget?.name}" permanentemente, incluindo o arquivo enviado. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteFile.mutate(deleteFileTarget)}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

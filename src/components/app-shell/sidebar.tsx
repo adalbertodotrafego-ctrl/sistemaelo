@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  LayoutDashboard, Users, Kanban, FolderKanban, ListChecks, CalendarDays,
+  LayoutDashboard, Users, Kanban, FolderKanban, CalendarDays,
   UserCog, Wallet, Megaphone, Video, FolderOpen, BarChart3, Target,
   Bell, Settings, User as UserIcon, X, FileText, Image,
 } from "lucide-react";
@@ -16,7 +16,6 @@ const nav = [
     { to: "/clients", icon: Users, label: "Clientes", key: "clients" },
     { to: "/crm", icon: Kanban, label: "CRM", key: "crm" },
     { to: "/projects", icon: FolderKanban, label: "Projetos", key: "projects" },
-    { to: "/tasks", icon: ListChecks, label: "Tarefas", key: "tasks" },
     { to: "/calendar", icon: CalendarDays, label: "Calendário", key: "calendar" },
     { to: "/meetings", icon: Video, label: "Reuniões", key: "meetings" },
   ]},

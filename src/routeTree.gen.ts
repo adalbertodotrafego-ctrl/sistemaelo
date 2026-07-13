@@ -15,7 +15,6 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
-import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 import { Route as AuthenticatedSocialRouteImport } from './routes/_authenticated/social'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
@@ -61,11 +60,6 @@ const IndexRoute = IndexRouteImport.update({
 const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   id: '/team',
   path: '/team',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedTasksRoute = AuthenticatedTasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSocialRoute = AuthenticatedSocialRouteImport.update({
@@ -176,7 +170,6 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/social': typeof AuthenticatedSocialRoute
-  '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
   '/clients/$id': typeof AuthenticatedClientsIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -201,7 +194,6 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/social': typeof AuthenticatedSocialRoute
-  '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
   '/clients/$id': typeof AuthenticatedClientsIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
@@ -228,7 +220,6 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/social': typeof AuthenticatedSocialRoute
-  '/_authenticated/tasks': typeof AuthenticatedTasksRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/clients/$id': typeof AuthenticatedClientsIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -255,7 +246,6 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/social'
-    | '/tasks'
     | '/team'
     | '/clients/$id'
     | '/clients/'
@@ -280,7 +270,6 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/social'
-    | '/tasks'
     | '/team'
     | '/clients/$id'
     | '/clients'
@@ -306,7 +295,6 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/social'
-    | '/_authenticated/tasks'
     | '/_authenticated/team'
     | '/_authenticated/clients/$id'
     | '/_authenticated/clients/'
@@ -362,13 +350,6 @@ declare module '@tanstack/react-router' {
       path: '/team'
       fullPath: '/team'
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/tasks': {
-      id: '/_authenticated/tasks'
-      path: '/tasks'
-      fullPath: '/tasks'
-      preLoaderRoute: typeof AuthenticatedTasksRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/social': {
@@ -509,7 +490,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSocialRoute: typeof AuthenticatedSocialRoute
-  AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedClientsIdRoute: typeof AuthenticatedClientsIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
@@ -531,7 +511,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSocialRoute: AuthenticatedSocialRoute,
-  AuthenticatedTasksRoute: AuthenticatedTasksRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedClientsIdRoute: AuthenticatedClientsIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,

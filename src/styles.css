@@ -190,3 +190,22 @@ html.light {
   background-clip: text;
   color: transparent;
 }
+
+/* Isola o relatório de cliente ao imprimir/exportar PDF — esconde sidebar,
+   topbar e o resto da UI, deixando só o conteúdo de #report-print-area. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #report-print-area,
+  #report-print-area * {
+    visibility: visible;
+  }
+  #report-print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    color: #000;
+    background: #fff;
+  }
+}

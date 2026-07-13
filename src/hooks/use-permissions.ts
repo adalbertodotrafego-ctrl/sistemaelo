@@ -7,7 +7,6 @@ export const ALL_PAGES = [
   { key: "clients", label: "Clientes" },
   { key: "crm", label: "CRM" },
   { key: "projects", label: "Projetos" },
-  { key: "tasks", label: "Tarefas" },
   { key: "calendar", label: "Calendário" },
   { key: "meetings", label: "Reuniões" },
   { key: "marketing", label: "Meta Ads" },
@@ -22,6 +21,11 @@ export const ALL_PAGES = [
   { key: "profile", label: "Perfil" },
   { key: "settings", label: "Configurações" },
 ] as const;
+
+// Nunca podem ser desligadas globalmente — sem elas ninguém (nem admin)
+// conseguiria navegar de volta para religar o resto.
+const ALWAYS_ON_PAGES = new Set(["dashboard", "notifications", "profile", "settings"]);
+export const TOGGLEABLE_PAGES = ALL_PAGES.filter((p) => !ALWAYS_ON_PAGES.has(p.key));
 
 export function usePermissions() {
   const { user } = useCurrentUser();
@@ -49,11 +53,22 @@ export function usePermissions() {
     },
   });
 
+  // Seções desligadas pelo admin em Configurações — vale para todo mundo,
+  // independente de cargo ou de ser admin.
+  const { data: disabledPages } = useQuery({
+    queryKey: ["agency-disabled-pages"],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("agency_settings").select("disabled_pages").limit(1).maybeSingle();
+      return (data?.disabled_pages as string[]) ?? [];
+    },
+  });
+
   const can = (pageKey: string) => {
+    if (!ALWAYS_ON_PAGES.has(pageKey) && disabledPages?.includes(pageKey)) return false;
     if (isAdmin) return true;
     if (!allowed) return true; // no cargo assigned → see everything by default
     return allowed.includes(pageKey);
   };
 
-  return { isAdmin: !!isAdmin, allowedPages: allowed, can };
+  return { isAdmin: !!isAdmin, allowedPages: allowed, disabledPages: disabledPages ?? [], can };
 }

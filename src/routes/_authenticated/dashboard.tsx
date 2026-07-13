@@ -7,7 +7,7 @@ import { brl, shortDate } from "@/lib/format";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
-  Users, FolderKanban, ListChecks, Wallet, Video, Megaphone,
+  Users, FolderKanban, Wallet, Video, Megaphone,
   UserCog, Sparkles, ArrowUpRight, Calendar as CalendarIcon,
 } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
@@ -34,22 +34,15 @@ function Dashboard() {
       const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-      // Always personal, even for admins — the board still shows everything,
-      // but "pendentes" on the dashboard should be *your* workload.
-      const tasksQuery = (supabase as any).from("tasks")
-        .select("*, task_assignees!inner(user_id)", { count: "exact", head: true })
-        .eq("task_assignees.user_id", user!.id).neq("status", "done");
-
       const meetingsQueryBase = supabase.from("events").select("*", { count: "exact", head: true })
         .eq("type", "meeting").gte("start_at", today.toISOString()).lt("start_at", tomorrow.toISOString());
       const meetingsQuery = isAdmin ? meetingsQueryBase : meetingsQueryBase.eq("created_by", user!.id);
 
-      const [clientsActive, projectsActive, projectsDone, tasksPending,
+      const [clientsActive, projectsActive, projectsDone,
              meetingsToday, leads, campaigns, team, monthIncome] = await Promise.all([
         showClients ? supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active") : null,
         showProjects ? supabase.from("projects").select("*", { count: "exact", head: true }).in("status", ["planning","in_progress","review"]) : null,
         showProjects ? supabase.from("projects").select("*", { count: "exact", head: true }).eq("status", "done") : null,
-        tasksQuery,
         meetingsQuery,
         showCrm ? supabase.from("crm_leads").select("*", { count: "exact", head: true }).not("stage","in","(won,lost)") : null,
         showMarketing ? supabase.from("campaigns").select("*", { count: "exact", head: true }) : null,
@@ -61,7 +54,6 @@ function Dashboard() {
         clientsActive: clientsActive?.count ?? 0,
         projectsActive: projectsActive?.count ?? 0,
         projectsDone: projectsDone?.count ?? 0,
-        tasksPending: tasksPending.count ?? 0,
         meetingsToday: meetingsToday.count ?? 0,
         leads: leads?.count ?? 0,
         campaigns: campaigns?.count ?? 0,
@@ -84,18 +76,6 @@ function Dashboard() {
       const scoped = isAdmin ? rows : rows.filter((e: any) =>
         e.created_by === user!.id || (e.event_participants ?? []).some((p: any) => p.user_id === user!.id));
       return scoped.slice(0, 5);
-    },
-  });
-
-  const { data: tasks } = useQuery({
-    queryKey: ["dashboard-tasks", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const { data } = await (supabase as any)
-        .from("tasks").select("id,title,status,priority,due_date, task_assignees!inner(user_id)")
-        .eq("task_assignees.user_id", user!.id)
-        .neq("status","done").order("due_date",{ ascending: true, nullsFirst: false }).limit(6);
-      return data ?? [];
     },
   });
 
@@ -141,7 +121,7 @@ function Dashboard() {
           title={`${greet()}, ${user?.user_metadata?.full_name?.split(" ")[0] ?? "time"} 👋`}
           description={isAdmin
             ? "Um panorama em tempo real da operação da Elo Marketing."
-            : "Suas tarefas e compromissos de hoje."}
+            : "Seus compromissos de hoje."}
         />
       </motion.div>
 
@@ -150,7 +130,6 @@ function Dashboard() {
         {showProjects && <StatCard label="Projetos ativos" value={stats?.projectsActive ?? "—"} icon={FolderKanban} accent="primary" />}
         {showProjects && <StatCard label="Projetos concluídos" value={stats?.projectsDone ?? "—"} icon={Sparkles} accent="success" />}
         {showFinance && <StatCard label="Receita do mês" value={brl(stats?.income ?? 0)} icon={Wallet} accent="success" />}
-        <StatCard label="Minhas tarefas pendentes" value={stats?.tasksPending ?? "—"} icon={ListChecks} accent="warning" />
         <StatCard label={isAdmin ? "Reuniões hoje" : "Minhas reuniões hoje"} value={stats?.meetingsToday ?? "—"} icon={Video} accent="primary" />
         {showCrm && <StatCard label="Leads em andamento" value={stats?.leads ?? "—"} icon={ArrowUpRight} accent="primary" />}
         {showMarketing && <StatCard label="Campanhas" value={stats?.campaigns ?? "—"} icon={Megaphone} accent="primary" />}
@@ -214,63 +193,33 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {isAdmin && (
         <div className="surface-card p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="font-display text-lg font-semibold">Minhas tarefas em aberto</div>
-            <Link to="/tasks" className="text-xs text-primary hover:underline">Abrir Kanban</Link>
-          </div>
-          <div className="divide-y divide-border/60">
-            {(tasks ?? []).length === 0 && (
-              <div className="py-10 text-center text-sm text-muted-foreground">Tudo em dia! 🎉</div>
-            )}
-            {(tasks ?? []).map((t: any) => (
-              <div key={t.id} className="flex items-center justify-between py-2.5">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{t.title}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {t.due_date ? `Vence em ${shortDate(t.due_date)}` : "Sem prazo"}
-                  </div>
-                </div>
-                <span className={
-                  "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider " +
-                  (t.priority === "urgent" ? "bg-red-500/15 text-red-400" :
-                   t.priority === "high" ? "bg-amber-500/15 text-amber-400" :
-                   "bg-primary/15 text-primary")
-                }>{t.priority}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {isAdmin && (
-          <div className="surface-card p-6">
-            <div className="mb-4 font-display text-lg font-semibold">Equipe e produção</div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
-                <UserCog className="h-5 w-5 text-primary" />
-                <div className="mt-2 text-2xl font-semibold">{stats?.team ?? "—"}</div>
-                <div className="text-xs text-muted-foreground">Funcionários ativos</div>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
-                <Megaphone className="h-5 w-5 text-primary" />
-                <div className="mt-2 text-2xl font-semibold">{stats?.campaigns ?? "—"}</div>
-                <div className="text-xs text-muted-foreground">Campanhas ativas</div>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
-                <ArrowUpRight className="h-5 w-5 text-primary" />
-                <div className="mt-2 text-2xl font-semibold">{stats?.leads ?? "—"}</div>
-                <div className="text-xs text-muted-foreground">Leads no pipeline</div>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
-                <Sparkles className="h-5 w-5 text-emerald-400" />
-                <div className="mt-2 text-2xl font-semibold">{stats?.projectsDone ?? "—"}</div>
-                <div className="text-xs text-muted-foreground">Projetos entregues</div>
-              </div>
+          <div className="mb-4 font-display text-lg font-semibold">Equipe e produção</div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
+              <UserCog className="h-5 w-5 text-primary" />
+              <div className="mt-2 text-2xl font-semibold">{stats?.team ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Funcionários ativos</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
+              <Megaphone className="h-5 w-5 text-primary" />
+              <div className="mt-2 text-2xl font-semibold">{stats?.campaigns ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Campanhas ativas</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
+              <ArrowUpRight className="h-5 w-5 text-primary" />
+              <div className="mt-2 text-2xl font-semibold">{stats?.leads ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Leads no pipeline</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-surface-2/40 p-4">
+              <Sparkles className="h-5 w-5 text-emerald-400" />
+              <div className="mt-2 text-2xl font-semibold">{stats?.projectsDone ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">Projetos entregues</div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
