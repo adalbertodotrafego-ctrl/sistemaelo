@@ -20,7 +20,7 @@ import {
 import {
   BarChart3, Users, FolderKanban, ListChecks, DollarSign, Target, Download,
   FileBarChart, Plus, Sparkles, Pencil, Trash2, MoreVertical, Eye, Printer, X,
-  Link2, FileDown, Loader2,
+  Link2, FileDown, Loader2, Wand2,
 } from "lucide-react";
 import { brl, shortDate } from "@/lib/format";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { listReporteiProjects, linkClientToReportei, getReporteiIndicators } from "@/lib/reportei.functions";
 import { suggestReporteiProject } from "@/lib/reportei-metrics";
+import { generateSummaryText, generateNotesText } from "@/lib/report-summary";
 import { downloadReportPdf } from "@/components/report-pdf";
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -343,7 +344,6 @@ function ClientReportsTab() {
       await downloadReportPdf(
         {
           agencyName: agencySettings?.name || "Elo Marketing",
-          agencyLogoUrl: agencySettings?.logo_url ?? null,
           clientName: report.clients?.name ?? "Cliente",
           title: report.title,
           periodStart: report.period_start,
@@ -498,8 +498,32 @@ function ClientReportsTab() {
                 </div>
               )}
 
-              <div><Label>Resumo</Label><Textarea rows={3} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} placeholder="Destaques do período, o que funcionou, próximos passos…" /></div>
-              <div><Label>Observações</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="mb-0">Resumo</Label>
+                  <Button
+                    type="button" size="sm" variant="outline" className="h-7"
+                    disabled={metrics.length === 0}
+                    onClick={() => setForm((f) => ({ ...f, summary: generateSummaryText(metrics) }))}
+                  >
+                    <Wand2 className="mr-1.5 h-3.5 w-3.5" />Gerar automaticamente
+                  </Button>
+                </div>
+                <Textarea rows={3} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} placeholder="Destaques do período, o que funcionou, próximos passos…" className="mt-1" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="mb-0">Observações</Label>
+                  <Button
+                    type="button" size="sm" variant="outline" className="h-7"
+                    disabled={metrics.length === 0}
+                    onClick={() => setForm((f) => ({ ...f, notes: generateNotesText(metrics) }))}
+                  >
+                    <Wand2 className="mr-1.5 h-3.5 w-3.5" />Gerar automaticamente
+                  </Button>
+                </div>
+                <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="mt-1" />
+              </div>
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
