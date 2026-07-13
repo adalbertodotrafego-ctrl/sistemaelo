@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
-  head: () => ({ meta: [{ title: "Entrar — Sistema Elo Marketing" }] }),
+  head: () => ({ meta: [{ title: "Entrar — Elo Marketing OS" }] }),
   component: AuthPage,
 });
 
@@ -79,7 +79,7 @@ function AuthPage() {
       >
         <Link to="/" className="mb-6 flex flex-col leading-tight">
           <span className="font-display text-xl font-bold tracking-tight">
-            Sistema Elo<span className="text-primary"> Marketing</span>
+            Elo Marketing<span className="text-primary"> OS</span>
           </span>
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</span>
         </Link>

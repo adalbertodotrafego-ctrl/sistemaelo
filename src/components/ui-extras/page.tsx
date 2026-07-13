@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -55,13 +56,34 @@ export function EmptyState({
   icon: Icon, title, description, action,
 }: { icon: React.ComponentType<{ className?: string }>; title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="surface-card flex flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-        <Icon className="h-7 w-7" />
-      </div>
-      <h3 className="font-display text-lg font-semibold">{title}</h3>
-      {description && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>}
-      {action && <div className="mt-5">{action}</div>}
+    <div className="surface-card relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden px-6 py-20 text-center sm:py-24">
+      {/* Camadas de brilho decorativas — preenchem o espaço vazio sem competir com o conteúdo */}
+      <div className="pointer-events-none absolute -left-16 -top-16 h-64 w-64 rounded-full bg-gradient-to-br from-primary/25 to-primary/0 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 -right-16 h-72 w-72 rounded-full bg-gradient-to-tl from-emerald-500/15 to-emerald-500/0 blur-3xl" />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        style={{ backgroundImage: "radial-gradient(currentColor 1px, transparent 1px)", backgroundSize: "20px 20px" }}
+      />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative"
+      >
+        <motion.div
+          animate={{ scale: [1, 1.06, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute inset-0 rounded-3xl bg-primary/20 blur-xl"
+        />
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-elegant">
+          <Icon className="h-7 w-7" />
+        </div>
+      </motion.div>
+
+      <h3 className="relative mt-5 font-display text-xl font-semibold">{title}</h3>
+      {description && <p className="relative mt-1.5 max-w-sm text-sm text-muted-foreground">{description}</p>}
+      {action && <div className="relative mt-6">{action}</div>}
     </div>
   );
 }

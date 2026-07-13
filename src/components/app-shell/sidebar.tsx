@@ -49,7 +49,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
     <div className="flex h-full flex-col">
       <Link to="/dashboard" className="flex h-16 flex-col justify-center border-b border-sidebar-border px-5 leading-tight">
         <div className="font-display text-base font-bold tracking-tight">
-          Sistema Elo<span className="text-primary"> Marketing</span>
+          Elo Marketing<span className="text-primary"> OS</span>
         </div>
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</div>
       </Link>

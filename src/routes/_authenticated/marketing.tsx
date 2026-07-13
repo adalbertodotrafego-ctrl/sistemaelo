@@ -15,7 +15,7 @@ import { getMetaOverview, getMetaAccountCampaigns } from "@/lib/meta.functions";
 import { objectiveLabel } from "@/lib/meta-accounts";
 
 export const Route = createFileRoute("/_authenticated/marketing")({
-  head: () => ({ meta: [{ title: "Meta Ads — Sistema Elo Marketing" }] }),
+  head: () => ({ meta: [{ title: "Meta Ads — Elo Marketing OS" }] }),
   component: MetaPage,
 });
 

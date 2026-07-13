@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { uploadImage } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/profile")({
-  head: () => ({ meta: [{ title: "Meu perfil — Sistema Elo Marketing" }] }),
+  head: () => ({ meta: [{ title: "Meu perfil — Elo Marketing OS" }] }),
   component: ProfilePage,
 });
 

@@ -15,7 +15,7 @@ import { usePermissions, TOGGLEABLE_PAGES } from "@/hooks/use-permissions";
 import { RolesManager } from "@/components/roles-manager";
 
 export const Route = createFileRoute("/_authenticated/settings")({
-  head: () => ({ meta: [{ title: "Configurações — Sistema Elo Marketing" }] }),
+  head: () => ({ meta: [{ title: "Configurações — Elo Marketing OS" }] }),
   component: SettingsPage,
 });
 
