@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,11 +20,14 @@ import {
 import {
   BarChart3, Users, FolderKanban, ListChecks, DollarSign, Target, Download,
   FileBarChart, Plus, Sparkles, Pencil, Trash2, MoreVertical, Eye, Printer, X,
+  Link2, FileDown, Loader2,
 } from "lucide-react";
 import { brl, shortDate } from "@/lib/format";
 import { toast } from "sonner";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { listReporteiProjects, linkClientToReportei, getReporteiIndicators } from "@/lib/reportei.functions";
+import { downloadReportPdf } from "@/components/report-pdf";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({ meta: [{ title: "Relatórios — Elo Marketing OS" }] }),
@@ -188,13 +192,19 @@ const statusLabels: Record<string, string> = { draft: "Rascunho", final: "Finali
 function ClientReportsTab() {
   const qc = useQueryClient();
   const { user } = useCurrentUser();
+  const listReporteiProjectsFn = useServerFn(listReporteiProjects);
+  const linkClientToReporteiFn = useServerFn(linkClientToReportei);
+  const getReporteiIndicatorsFn = useServerFn(getReporteiIndicators);
+
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyReportForm);
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [pullingReportei, setPullingReportei] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [viewTarget, setViewTarget] = useState<any>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const { data: reports } = useQuery({
     queryKey: ["client_reports"],
@@ -204,6 +214,33 @@ function ClientReportsTab() {
   const { data: clients } = useQuery({
     queryKey: ["clients-min"],
     queryFn: async () => (await supabase.from("clients").select("id, name").order("name")).data ?? [],
+  });
+  const { data: clientsReportei } = useQuery({
+    queryKey: ["clients-reportei-link"],
+    queryFn: async () => (await (supabase as any).from("clients").select("id, reportei_project_id")).data ?? [],
+  });
+  const { data: reporteiProjects } = useQuery({
+    queryKey: ["reportei-projects"],
+    enabled: open,
+    queryFn: async () => (await listReporteiProjectsFn()).projects ?? [],
+  });
+  const { data: agencySettings } = useQuery({
+    queryKey: ["agency-settings"],
+    queryFn: async () => (await supabase.from("agency_settings").select("*").limit(1).maybeSingle()).data,
+  });
+
+  const currentReporteiProjectId = clientsReportei?.find((c: any) => c.id === form.client_id)?.reportei_project_id ?? null;
+
+  const linkReportei = useMutation({
+    mutationFn: async (reporteiProjectId: number | null) => {
+      if (!form.client_id) throw new Error("Selecione um cliente primeiro");
+      await linkClientToReporteiFn({ data: { clientId: form.client_id, reporteiProjectId } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients-reportei-link"] });
+      toast.success("Vínculo com o Reportei salvo");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const openCreate = () => {
@@ -248,19 +285,75 @@ function ClientReportsTab() {
       const avgRoas = campaigns.length ? campaigns.reduce((s: number, c: any) => s + Number(c.roas || 0), 0) / campaigns.length : 0;
       const avgCtr = campaigns.length ? campaigns.reduce((s: number, c: any) => s + Number(c.ctr || 0), 0) / campaigns.length : 0;
       const income = (fin.data ?? []).reduce((s: number, f: any) => s + Number(f.amount || 0), 0);
-      setMetrics([
-        { label: "Investido em anúncios", value: brl(invested) },
-        { label: "Leads gerados", value: String(leads) },
-        { label: "ROAS médio", value: avgRoas.toFixed(2) + "x" },
-        { label: "CTR médio", value: avgCtr.toFixed(2) + "%" },
-        { label: "Receita no período", value: brl(income) },
-        { label: "Posts publicados", value: String(social.count ?? 0) },
-      ]);
-      toast.success("Dados preenchidos — revise e edite à vontade antes de salvar.");
+      setMetrics((prev) => {
+        const internalLabels = new Set(["Investido em anúncios", "Leads gerados", "ROAS médio", "CTR médio", "Receita no período", "Posts publicados"]);
+        return [
+          ...prev.filter((m) => !internalLabels.has(m.label)),
+          { label: "Investido em anúncios", value: brl(invested) },
+          { label: "Leads gerados", value: String(leads) },
+          { label: "ROAS médio", value: avgRoas.toFixed(2) + "x" },
+          { label: "CTR médio", value: avgCtr.toFixed(2) + "%" },
+          { label: "Receita no período", value: brl(income) },
+          { label: "Posts publicados", value: String(social.count ?? 0) },
+        ];
+      });
+      toast.success("Dados internos preenchidos — revise e edite à vontade antes de salvar.");
     } catch (e: any) {
       toast.error(e.message ?? "Não foi possível puxar os dados");
     } finally {
       setAutoFilling(false);
+    }
+  };
+
+  const pullFromReportei = async () => {
+    if (!form.client_id) return toast.error("Selecione um cliente primeiro");
+    if (!currentReporteiProjectId) return toast.error("Vincule este cliente a um projeto do Reportei primeiro");
+    setPullingReportei(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      const res = await getReporteiIndicatorsFn({
+        data: { reporteiProjectId: currentReporteiProjectId, start: form.period_start || monthAgo, end: form.period_end || today },
+      });
+      const pulled = (res.indicators ?? []).filter((i: any) => !i.error);
+      const failed = (res.indicators ?? []).filter((i: any) => i.error);
+      const pulledLabels = new Set(pulled.map((i: any) => i.label));
+      setMetrics((prev) => [
+        ...prev.filter((m) => !pulledLabels.has(m.label)),
+        ...pulled.map((i: any) => ({ label: i.label, value: i.value })),
+      ]);
+      if (pulled.length === 0) toast.error("Nenhum indicador retornou dados para esse período.");
+      else toast.success(`${pulled.length} indicador(es) puxados do Reportei${failed.length ? ` (${failed.length} falharam)` : ""}.`);
+    } catch (e: any) {
+      toast.error(e.message ?? "Não foi possível puxar do Reportei");
+    } finally {
+      setPullingReportei(false);
+    }
+  };
+
+  const downloadPdf = async (report: any) => {
+    if (!report) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadReportPdf(
+        {
+          agencyName: agencySettings?.name || "Elo Marketing",
+          agencyLogoUrl: agencySettings?.logo_url ?? null,
+          clientName: report.clients?.name ?? "Cliente",
+          title: report.title,
+          periodStart: report.period_start,
+          periodEnd: report.period_end,
+          status: report.status,
+          metrics: Array.isArray(report.metrics) ? report.metrics : [],
+          summary: report.summary,
+          notes: report.notes,
+        },
+        `relatorio-${(report.clients?.name ?? "cliente").toLowerCase().replace(/\s+/g, "-")}-${report.id.slice(0, 8)}.pdf`,
+      );
+    } catch (e: any) {
+      toast.error(e.message ?? "Não foi possível gerar o PDF");
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -326,6 +419,25 @@ function ClientReportsTab() {
                   </Select>
                 </div>
               </div>
+
+              {form.client_id && (
+                <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/30 p-3">
+                  <Link2 className="h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+                    {currentReporteiProjectId ? (
+                      <>Vinculado ao Reportei: <strong className="text-foreground">{reporteiProjects?.find((p: any) => p.id === currentReporteiProjectId)?.name ?? `#${currentReporteiProjectId}`}</strong></>
+                    ) : "Ainda não vinculado a um projeto do Reportei"}
+                  </div>
+                  <Select
+                    value={currentReporteiProjectId ? String(currentReporteiProjectId) : ""}
+                    onValueChange={(v) => linkReportei.mutate(Number(v))}
+                  >
+                    <SelectTrigger className="w-44 shrink-0"><SelectValue placeholder={reporteiProjects ? "Vincular…" : "Carregando…"} /></SelectTrigger>
+                    <SelectContent>{(reporteiProjects ?? []).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div><Label>Título *</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ex: Relatório de julho — Saladas Grill" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Período — início</Label><Input type="date" value={form.period_start} onChange={(e) => setForm({ ...form, period_start: e.target.value })} /></div>
@@ -334,9 +446,13 @@ function ClientReportsTab() {
 
               <div className="flex items-center justify-between pt-1">
                 <Label className="mb-0">Indicadores</Label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={autofill} disabled={autoFilling}>
-                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />{autoFilling ? "Puxando…" : "Preencher automaticamente"}
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />{autoFilling ? "Puxando…" : "Dados internos"}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={pullFromReportei} disabled={pullingReportei || !currentReporteiProjectId}>
+                    {pullingReportei ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                    {pullingReportei ? "Puxando…" : "Puxar do Reportei"}
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={addMetric}><Plus className="mr-1.5 h-3.5 w-3.5" />Indicador</Button>
                 </div>
@@ -457,7 +573,11 @@ function ClientReportsTab() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Imprimir / PDF</Button>
+            <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Imprimir</Button>
+            <Button onClick={() => downloadPdf(viewTarget)} disabled={downloadingPdf}>
+              {downloadingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+              Baixar PDF
+            </Button>
             <Button variant="ghost" onClick={() => setViewTarget(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
