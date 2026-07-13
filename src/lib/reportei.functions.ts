@@ -78,6 +78,12 @@ export const getReporteiIndicators = createServerFn({ method: "POST" })
     for (const integ of integrations) {
       const catalog = REPORTEI_METRIC_CATALOG[integ.slug];
       if (!catalog || catalog.length === 0) continue;
+      // Um projeto do Reportei pode ter mais de uma conta do mesmo tipo (ex.: dois
+      // Facebook Ads de clientes distintos agrupados no mesmo projeto — caso real:
+      // "Metronorte Florianópolis" tem BR-101 e Ivo Silveira como contas separadas).
+      // Nesse caso, o nome da conta entra no rótulo pra não misturar os números.
+      const sameSlugCount = integrations.filter((i) => i.slug === integ.slug).length;
+      const suffix = sameSlugCount > 1 ? ` — ${integ.name}` : "";
       try {
         const body = {
           start: data.start,
@@ -92,7 +98,7 @@ export const getReporteiIndicators = createServerFn({ method: "POST" })
         for (const m of catalog) {
           const raw = json?.[m.reference_key]?.values;
           if (raw === undefined || raw === null) continue;
-          results.push({ label: m.label, value: formatReporteiValue(raw, m.format), platform: integ.slug });
+          results.push({ label: m.label + suffix, value: formatReporteiValue(raw, m.format), platform: integ.slug });
         }
       } catch (e: any) {
         results.push({ label: `${integ.name} (${integ.slug})`, value: "—", platform: integ.slug, error: e?.message ?? "Falha ao consultar" });

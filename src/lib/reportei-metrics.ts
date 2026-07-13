@@ -41,6 +41,27 @@ export const REPORTEI_METRIC_CATALOG: Record<string, ReporteiMetricDef[]> = {
   ],
 };
 
+// Compara nomes ignorando acento, pontuação e maiúsculas — "ACF | Tecnologia"
+// e "ACF Tecnologia" viram a mesma string, então dá pra sugerir o vínculo
+// automaticamente em vez de obrigar a garimpar a lista inteira do Reportei.
+function normalizeName(s: string): string {
+  return s
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+}
+
+export function suggestReporteiProject(clientName: string, projects: { id: number; name: string }[]) {
+  const target = normalizeName(clientName);
+  if (!target) return null;
+  const exact = projects.find((p) => normalizeName(p.name) === target);
+  if (exact) return exact;
+  return projects.find((p) => {
+    const pn = normalizeName(p.name);
+    return pn.length > 2 && (pn.includes(target) || target.includes(pn));
+  }) ?? null;
+}
+
 export function formatReporteiValue(raw: unknown, format: ReporteiMetricDef["format"]): string {
   const n = Number(raw);
   if (Number.isNaN(n)) return String(raw ?? "—");

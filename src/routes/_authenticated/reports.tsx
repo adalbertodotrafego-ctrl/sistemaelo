@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { listReporteiProjects, linkClientToReportei, getReporteiIndicators } from "@/lib/reportei.functions";
+import { suggestReporteiProject } from "@/lib/reportei-metrics";
 import { downloadReportPdf } from "@/components/report-pdf";
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -230,6 +231,10 @@ function ClientReportsTab() {
   });
 
   const currentReporteiProjectId = clientsReportei?.find((c: any) => c.id === form.client_id)?.reportei_project_id ?? null;
+  const selectedClientName = clients?.find((c: any) => c.id === form.client_id)?.name ?? "";
+  const suggestedProject = !currentReporteiProjectId && selectedClientName && reporteiProjects
+    ? suggestReporteiProject(selectedClientName, reporteiProjects)
+    : null;
 
   const linkReportei = useMutation({
     mutationFn: async (reporteiProjectId: number | null) => {
@@ -421,20 +426,36 @@ function ClientReportsTab() {
               </div>
 
               {form.client_id && (
-                <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/30 p-3">
-                  <Link2 className="h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0 flex-1 text-xs text-muted-foreground">
-                    {currentReporteiProjectId ? (
-                      <>Vinculado ao Reportei: <strong className="text-foreground">{reporteiProjects?.find((p: any) => p.id === currentReporteiProjectId)?.name ?? `#${currentReporteiProjectId}`}</strong></>
-                    ) : "Ainda não vinculado a um projeto do Reportei"}
+                <div className="space-y-2 rounded-lg border border-border/60 bg-surface-2/30 p-3">
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-4 w-4 shrink-0 text-primary" />
+                    <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+                      {currentReporteiProjectId ? (
+                        <>Vinculado ao Reportei: <strong className="text-foreground">{reporteiProjects?.find((p: any) => p.id === currentReporteiProjectId)?.name ?? `#${currentReporteiProjectId}`}</strong></>
+                      ) : !reporteiProjects ? "Carregando projetos do Reportei…"
+                      : "Ainda não vinculado a um projeto do Reportei"}
+                    </div>
+                    <Select
+                      value={currentReporteiProjectId ? String(currentReporteiProjectId) : ""}
+                      onValueChange={(v) => linkReportei.mutate(Number(v))}
+                    >
+                      <SelectTrigger className="w-44 shrink-0"><SelectValue placeholder="Vincular manualmente…" /></SelectTrigger>
+                      <SelectContent>{(reporteiProjects ?? []).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
                   </div>
-                  <Select
-                    value={currentReporteiProjectId ? String(currentReporteiProjectId) : ""}
-                    onValueChange={(v) => linkReportei.mutate(Number(v))}
-                  >
-                    <SelectTrigger className="w-44 shrink-0"><SelectValue placeholder={reporteiProjects ? "Vincular…" : "Carregando…"} /></SelectTrigger>
-                    <SelectContent>{(reporteiProjects ?? []).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  {suggestedProject && (
+                    <div className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                      <span>Sugestão: <strong>{suggestedProject.name}</strong> parece ser este cliente no Reportei</span>
+                      <Button type="button" size="sm" variant="outline" className="h-7 shrink-0" onClick={() => linkReportei.mutate(suggestedProject.id)}>
+                        Vincular
+                      </Button>
+                    </div>
+                  )}
+                  {!currentReporteiProjectId && !suggestedProject && reporteiProjects && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Nenhum projeto com nome parecido foi encontrado no Reportei — ou esse cliente ainda não tem projeto lá, ou o nome é bem diferente. Escolha manualmente na lista acima, se houver.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -450,7 +471,11 @@ function ClientReportsTab() {
                   <Button type="button" size="sm" variant="outline" onClick={autofill} disabled={autoFilling}>
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" />{autoFilling ? "Puxando…" : "Dados internos"}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={pullFromReportei} disabled={pullingReportei || !currentReporteiProjectId}>
+                  <Button
+                    type="button" size="sm" variant="outline" onClick={pullFromReportei}
+                    disabled={pullingReportei || !currentReporteiProjectId}
+                    title={!currentReporteiProjectId ? "Vincule este cliente a um projeto do Reportei acima primeiro" : undefined}
+                  >
                     {pullingReportei ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
                     {pullingReportei ? "Puxando…" : "Puxar do Reportei"}
                   </Button>
