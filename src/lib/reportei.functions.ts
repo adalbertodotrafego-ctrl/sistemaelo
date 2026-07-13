@@ -95,8 +95,10 @@ export const getReporteiIndicators = createServerFn({ method: "POST" })
           }),
         };
         const json = await reportei("/metrics/get-data", { method: "POST", body: JSON.stringify(body) });
+        // A API embrulha o resultado num campo "data" — {"data": {"fb_ads:spend": {...}}} —
+        // diferente do que uma ferramenta intermediária de teste tinha mostrado sem esse envelope.
         for (const m of catalog) {
-          const raw = json?.[m.reference_key]?.values;
+          const raw = json?.data?.[m.reference_key]?.values;
           if (raw === undefined || raw === null) continue;
           results.push({ label: m.label + suffix, value: formatReporteiValue(raw, m.format), platform: integ.slug });
         }
