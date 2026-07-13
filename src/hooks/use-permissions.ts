@@ -10,7 +10,7 @@ export const ALL_PAGES = [
   { key: "tasks", label: "Tarefas" },
   { key: "calendar", label: "Calendário" },
   { key: "meetings", label: "Reuniões" },
-  { key: "marketing", label: "Marketing" },
+  { key: "marketing", label: "Meta Ads" },
   { key: "social", label: "Social Media" },
   { key: "goals", label: "Metas" },
   { key: "reports", label: "Relatórios" },

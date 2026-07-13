@@ -21,7 +21,7 @@ const nav = [
     { to: "/meetings", icon: Video, label: "Reuniões", key: "meetings" },
   ]},
   { group: "Crescimento", items: [
-    { to: "/marketing", icon: Megaphone, label: "Marketing", key: "marketing" },
+    { to: "/marketing", icon: Megaphone, label: "Meta Ads", key: "marketing" },
     { to: "/social", icon: Image, label: "Social Media", key: "social" },
     { to: "/goals", icon: Target, label: "Metas", key: "goals" },
     { to: "/reports", icon: BarChart3, label: "Relatórios", key: "reports" },
