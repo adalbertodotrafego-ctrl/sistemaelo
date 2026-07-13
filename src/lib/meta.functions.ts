@@ -10,6 +10,13 @@ import { META_ACCOUNTS } from "@/lib/meta-accounts";
 const API_VERSION = process.env.META_API_VERSION || "v21.0";
 const GRAPH = `https://graph.facebook.com/${API_VERSION}`;
 
+// O campo effective_status=ACTIVE do Meta só diz que o "interruptor" da campanha
+// está ligado — contas antigas acumulam centenas de campanhas nesse estado mesmo
+// sem nenhum conjunto de anúncios rodando (orçamento zerado, agenda encerrada,
+// tudo pausado por dentro). Uma campanha só conta como "ativa" de verdade aqui
+// se, além disso, teve gasto real nos últimos dias.
+const ACTIVE_WINDOW = "last_3d";
+
 function getToken(): string | null {
   return process.env.META_ACCESS_TOKEN || null;
 }
@@ -46,7 +53,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
         try {
           const [campaigns, periodIns, todayIns] = await Promise.all([
             graph(`/act_${acc.accountId}/campaigns`, {
-              fields: "id,effective_status",
+              fields: `id,insights.date_preset(${ACTIVE_WINDOW}){spend}`,
               effective_status: JSON.stringify(["ACTIVE"]),
               limit: "500",
             }),
@@ -59,7 +66,9 @@ export const getMetaOverview = createServerFn({ method: "POST" })
               fields: "spend",
             }),
           ]);
-          const active = (campaigns.data ?? []).filter((c: any) => c.effective_status === "ACTIVE");
+          const active = (campaigns.data ?? []).filter(
+            (c: any) => Number(c.insights?.data?.[0]?.spend ?? 0) > 0,
+          );
           const p = periodIns.data?.[0];
           const t = todayIns.data?.[0];
           return {
@@ -106,29 +115,46 @@ export const getMetaAccountCampaigns = createServerFn({ method: "POST" })
     if (!acc) throw new Error("Conta não encontrada na lista configurada.");
     const preset = data.datePreset || "today";
 
+    // 1) Quais campanhas estão realmente ativas (gasto real recente) — independe
+    //    do período selecionado na tela, pra não sumir campanha ativa só porque
+    //    o Meta ainda não fechou os dados de "hoje".
+    const activeSet = await graph(`/act_${acc.accountId}/campaigns`, {
+      fields: `id,insights.date_preset(${ACTIVE_WINDOW}){spend}`,
+      effective_status: JSON.stringify(["ACTIVE"]),
+      limit: "500",
+    });
+    const activeIds = new Set(
+      (activeSet.data ?? [])
+        .filter((c: any) => Number(c.insights?.data?.[0]?.spend ?? 0) > 0)
+        .map((c: any) => c.id),
+    );
+
+    // 2) Métricas para exibir, no período que o usuário escolheu na tela.
     const json = await graph(`/act_${acc.accountId}/campaigns`, {
       fields: `name,objective,effective_status,daily_budget,lifetime_budget,insights.date_preset(${preset}){spend,ctr,impressions,clicks,cpc,reach}`,
       effective_status: JSON.stringify(["ACTIVE"]),
-      limit: "300",
+      limit: "500",
     });
 
-    const campaigns = (json.data ?? []).map((c: any) => {
-      const ins = c.insights?.data?.[0];
-      return {
-        id: c.id,
-        name: c.name,
-        objective: c.objective ?? null,
-        status: c.effective_status,
-        dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : null,
-        lifetimeBudget: c.lifetime_budget ? Number(c.lifetime_budget) / 100 : null,
-        spend: Number(ins?.spend ?? 0),
-        ctr: Number(ins?.ctr ?? 0),
-        impressions: Number(ins?.impressions ?? 0),
-        clicks: Number(ins?.clicks ?? 0),
-        cpc: Number(ins?.cpc ?? 0),
-        reach: Number(ins?.reach ?? 0),
-      };
-    });
+    const campaigns = (json.data ?? [])
+      .filter((c: any) => activeIds.has(c.id))
+      .map((c: any) => {
+        const ins = c.insights?.data?.[0];
+        return {
+          id: c.id,
+          name: c.name,
+          objective: c.objective ?? null,
+          status: c.effective_status,
+          dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : null,
+          lifetimeBudget: c.lifetime_budget ? Number(c.lifetime_budget) / 100 : null,
+          spend: Number(ins?.spend ?? 0),
+          ctr: Number(ins?.ctr ?? 0),
+          impressions: Number(ins?.impressions ?? 0),
+          clicks: Number(ins?.clicks ?? 0),
+          cpc: Number(ins?.cpc ?? 0),
+          reach: Number(ins?.reach ?? 0),
+        };
+      });
 
     // Maior gasto primeiro
     campaigns.sort((a: any, b: any) => b.spend - a.spend);
