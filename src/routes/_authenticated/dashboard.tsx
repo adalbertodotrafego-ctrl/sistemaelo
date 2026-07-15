@@ -168,7 +168,7 @@ function Dashboard() {
         <div className={"surface-card p-6 " + (showFinance ? "" : "lg:col-span-3")}>
           <div className="mb-4 flex items-center justify-between">
             <div className="font-display text-lg font-semibold">{isAdmin ? "Próximos eventos" : "Meus próximos eventos"}</div>
-            <Link to="/calendar" className="text-xs text-primary hover:underline">Ver tudo</Link>
+            <Link to="/meetings" className="text-xs text-primary hover:underline">Ver tudo</Link>
           </div>
           <div className="space-y-3">
             {(upcoming ?? []).length === 0 && (

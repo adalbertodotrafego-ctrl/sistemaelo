@@ -29,7 +29,6 @@ import { Route as AuthenticatedFilesRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCrmRouteImport } from './routes/_authenticated/crm'
 import { Route as AuthenticatedContractsRouteImport } from './routes/_authenticated/contracts'
-import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedClientsIdRouteImport } from './routes/_authenticated/clients.$id'
 
@@ -133,11 +132,6 @@ const AuthenticatedContractsRoute = AuthenticatedContractsRouteImport.update({
   path: '/contracts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/clients/',
@@ -155,7 +149,6 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/calendar': typeof AuthenticatedCalendarRoute
   '/contracts': typeof AuthenticatedContractsRoute
   '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -179,7 +172,6 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/calendar': typeof AuthenticatedCalendarRoute
   '/contracts': typeof AuthenticatedContractsRoute
   '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -205,7 +197,6 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/contracts': typeof AuthenticatedContractsRoute
   '/_authenticated/crm': typeof AuthenticatedCrmRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -231,7 +222,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/google-calendar-callback'
     | '/reset-password'
-    | '/calendar'
     | '/contracts'
     | '/crm'
     | '/dashboard'
@@ -255,7 +245,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/google-calendar-callback'
     | '/reset-password'
-    | '/calendar'
     | '/contracts'
     | '/crm'
     | '/dashboard'
@@ -280,7 +269,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/google-calendar-callback'
     | '/reset-password'
-    | '/_authenticated/calendar'
     | '/_authenticated/contracts'
     | '/_authenticated/crm'
     | '/_authenticated/dashboard'
@@ -450,13 +438,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedContractsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/calendar': {
-      id: '/_authenticated/calendar'
-      path: '/calendar'
-      fullPath: '/calendar'
-      preLoaderRoute: typeof AuthenticatedCalendarRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/clients'
@@ -475,7 +456,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
   AuthenticatedContractsRoute: typeof AuthenticatedContractsRoute
   AuthenticatedCrmRoute: typeof AuthenticatedCrmRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -496,7 +476,6 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
   AuthenticatedContractsRoute: AuthenticatedContractsRoute,
   AuthenticatedCrmRoute: AuthenticatedCrmRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,

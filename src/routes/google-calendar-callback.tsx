@@ -39,7 +39,7 @@ function GoogleCalendarCallbackPage() {
       .then((r) => {
         setStatus("success");
         setMessage(r.email ? `Conectado como ${r.email}!` : "Google Calendar conectado!");
-        setTimeout(() => navigate({ to: "/calendar" }), 1800);
+        setTimeout(() => navigate({ to: "/meetings" }), 1800);
       })
       .catch((e: Error) => {
         setStatus("error");
@@ -56,10 +56,10 @@ function GoogleCalendarCallbackPage() {
         <p className="mt-4 text-sm text-muted-foreground">{message}</p>
         {status === "error" && (
           <button
-            onClick={() => navigate({ to: "/calendar" })}
+            onClick={() => navigate({ to: "/meetings" })}
             className="mt-4 text-sm text-primary hover:underline"
           >
-            Voltar para o calendário
+            Voltar para reuniões
           </button>
         )}
       </div>

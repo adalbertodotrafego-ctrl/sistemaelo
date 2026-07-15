@@ -7,7 +7,6 @@ export const ALL_PAGES = [
   { key: "clients", label: "Clientes" },
   { key: "crm", label: "CRM" },
   { key: "projects", label: "Projetos" },
-  { key: "calendar", label: "Calendário" },
   { key: "meetings", label: "Reuniões" },
   { key: "marketing", label: "Meta Ads" },
   { key: "social", label: "Social Media" },
