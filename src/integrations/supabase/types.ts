@@ -159,6 +159,7 @@ export type Database = {
           entry_date: string | null
           id: string
           instagram: string | null
+          logo_url: string | null
           monthly_value: number | null
           name: string
           notes: string | null
@@ -180,6 +181,7 @@ export type Database = {
           entry_date?: string | null
           id?: string
           instagram?: string | null
+          logo_url?: string | null
           monthly_value?: number | null
           name: string
           notes?: string | null
@@ -201,6 +203,7 @@ export type Database = {
           entry_date?: string | null
           id?: string
           instagram?: string | null
+          logo_url?: string | null
           monthly_value?: number | null
           name?: string
           notes?: string | null

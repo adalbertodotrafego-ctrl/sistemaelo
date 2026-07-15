@@ -53,7 +53,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
         try {
           const [campaigns, periodIns, todayIns] = await Promise.all([
             graph(`/act_${acc.accountId}/campaigns`, {
-              fields: `id,insights.date_preset(${ACTIVE_WINDOW}){spend}`,
+              fields: `id,daily_budget,insights.date_preset(${ACTIVE_WINDOW}){spend}`,
               effective_status: JSON.stringify(["ACTIVE"]),
               limit: "500",
             }),
@@ -69,6 +69,12 @@ export const getMetaOverview = createServerFn({ method: "POST" })
           const active = (campaigns.data ?? []).filter(
             (c: any) => Number(c.insights?.data?.[0]?.spend ?? 0) > 0,
           );
+          // Verba = orçamento diário configurado nas campanhas ativas (independe de já
+          // terem gastado ou não hoje) — é o teto que a conta pode gastar por dia.
+          const budgetDaily = (campaigns.data ?? []).reduce(
+            (sum: number, c: any) => sum + Number(c.daily_budget ?? 0) / 100,
+            0,
+          );
           const p = periodIns.data?.[0];
           const t = todayIns.data?.[0];
           return {
@@ -77,6 +83,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
             accountId: acc.accountId,
             currency: acc.currency,
             activeCampaigns: active.length,
+            budgetDaily,
             spendPeriod: Number(p?.spend ?? 0),
             spendToday: Number(t?.spend ?? 0),
             ctr: Number(p?.ctr ?? 0),
@@ -91,6 +98,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
             accountId: acc.accountId,
             currency: acc.currency,
             activeCampaigns: 0,
+            budgetDaily: 0,
             spendPeriod: 0,
             spendToday: 0,
             ctr: 0,
