@@ -204,6 +204,7 @@ function ClientReportsTab() {
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [autoFilling, setAutoFilling] = useState(false);
   const [pullingReportei, setPullingReportei] = useState(false);
+  const [lastPull, setLastPull] = useState<{ at: string; start: string; end: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [viewTarget, setViewTarget] = useState<any>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -253,11 +254,13 @@ function ClientReportsTab() {
     setEditingId(null);
     setForm(emptyReportForm);
     setMetrics([]);
+    setLastPull(null);
     setOpen(true);
   };
 
   const openEdit = (r: any) => {
     setEditingId(r.id);
+    setLastPull(null);
     setForm({
       client_id: r.client_id ?? "", title: r.title ?? "",
       period_start: r.period_start ?? "", period_end: r.period_end ?? "",
@@ -328,8 +331,9 @@ function ClientReportsTab() {
         ...prev.filter((m) => !pulledLabels.has(m.label)),
         ...pulled.map((i: any) => ({ label: i.label, value: i.value })),
       ]);
+      setLastPull({ at: res.fetchedAt ?? new Date().toISOString(), start: res.start ?? "", end: res.end ?? "" });
       if (pulled.length === 0) toast.error("Nenhum indicador retornou dados para esse período.");
-      else toast.success(`${pulled.length} indicador(es) puxados do Reportei${failed.length ? ` (${failed.length} falharam)` : ""}.`);
+      else toast.success(`${pulled.length} indicador(es) puxados do Reportei, ao vivo${failed.length ? ` (${failed.length} falharam)` : ""}.`);
     } catch (e: any) {
       toast.error(e.message ?? "Não foi possível puxar do Reportei");
     } finally {
@@ -465,6 +469,13 @@ function ClientReportsTab() {
                 <div><Label>Período — fim</Label><Input type="date" value={form.period_end} onChange={(e) => setForm({ ...form, period_end: e.target.value })} /></div>
               </div>
 
+              {lastPull && (
+                <div className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-300">
+                  <Sparkles className="h-3 w-3" />
+                  Puxado do Reportei ao vivo às {new Date(lastPull.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  {lastPull.start && lastPull.end ? ` · período ${shortDate(lastPull.start)} → ${shortDate(lastPull.end)}` : ""}
+                </div>
+              )}
               <div className="flex items-center justify-between pt-1">
                 <Label className="mb-0">Indicadores</Label>
                 <div className="flex flex-wrap justify-end gap-2">

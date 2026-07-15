@@ -16,11 +16,20 @@ function getToken(): string | null {
 async function reportei(path: string, init?: RequestInit) {
   const token = getToken();
   if (!token) throw new Error("REPORTEI_NOT_CONFIGURED");
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Em runtime serverless o fetch pode reaproveitar uma resposta em cache e devolver
+  // números antigos — o que fazia o relatório "não vir atualizado". Forçamos uma busca
+  // sempre nova: cache: "no-store", cabeçalhos anti-cache e um carimbo de tempo na URL
+  // (cache-busting) para nunca cair numa resposta guardada por CDN/proxy.
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${API_BASE}${path}${sep}_ts=${Date.now()}`;
+  const res = await fetch(url, {
     ...init,
+    cache: "no-store",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
       ...(init?.headers ?? {}),
     },
   });
@@ -107,5 +116,5 @@ export const getReporteiIndicators = createServerFn({ method: "POST" })
       }
     }
 
-    return { connected: true, indicators: results };
+    return { connected: true, indicators: results, fetchedAt: new Date().toISOString(), start: data.start, end: data.end };
   });
