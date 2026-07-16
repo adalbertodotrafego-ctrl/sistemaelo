@@ -34,7 +34,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { listReporteiProjects, linkClientToReportei, getReporteiIndicators } from "@/lib/reportei.functions";
 import { suggestReporteiProject } from "@/lib/reportei-metrics";
 import { generateSummaryText, generateNotesText } from "@/lib/report-summary";
-import { downloadReportPdf } from "@/components/report-pdf";
+
+// O gerador de PDF (react-pdf + fontes) pesa ~1,5MB — só baixa quando alguém
+// realmente clica em gerar/baixar um PDF, não ao abrir a página de Relatórios.
+const loadPdf = () => import("@/components/report-pdf");
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({ meta: [{ title: "Relatórios — Elo Marketing OS" }] }),
@@ -290,6 +293,13 @@ function ClientReportsTab() {
     (reports ?? []).filter((r: any) => (folderId === "none" ? !r.folder_id : r.folder_id === folderId)).length;
   const allVisibleSelected = visibleReports.length > 0 && visibleReports.every((r: any) => selectedIds.has(r.id));
 
+  // Trocar de pasta limpa a seleção — senão "Excluir selecionados" poderia apagar
+  // relatórios que ficaram marcados mas não estão mais visíveis na tela.
+  const selectFolder = (id: string) => {
+    setActiveFolder(id);
+    setSelectedIds(new Set());
+  };
+
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -415,6 +425,7 @@ function ClientReportsTab() {
     if (!report) return;
     setDownloadingPdf(true);
     try {
+      const { downloadReportPdf } = await loadPdf();
       await downloadReportPdf(
         {
           agencyName: agencySettings?.name || "Elo Marketing",
@@ -564,6 +575,7 @@ function ClientReportsTab() {
   const runGeneration = async () => {
     const ids = Array.from(genClientIds);
     if (ids.length === 0) return toast.error("Selecione ao menos um cliente");
+    const { downloadReportPdf } = await loadPdf();
     const { start, end } = genType === "weekly" ? lastCompleteWeek() : lastCompleteMonth();
     const agencyName = agencySettings?.name || "Elo Marketing";
     const targetFolder = activeFolder !== "all" && activeFolder !== "none" ? activeFolder : null;
@@ -577,8 +589,13 @@ function ClientReportsTab() {
       try {
         let m: Metric[] = [];
         if (projectId) {
-          const res = await getReporteiIndicatorsFn({ data: { reporteiProjectId: projectId, start, end } });
-          m = (res.indicators ?? []).filter((i: any) => !i.error).map((i: any) => ({ label: i.label, value: i.value }));
+          // Reportei fora do ar não derruba o cliente — cai nos dados internos abaixo.
+          try {
+            const res = await getReporteiIndicatorsFn({ data: { reporteiProjectId: projectId, start, end } });
+            m = (res.indicators ?? []).filter((i: any) => !i.error).map((i: any) => ({ label: i.label, value: i.value }));
+          } catch {
+            m = [];
+          }
         }
         if (m.length === 0) m = await internalMetrics(clientId, start, end);
         if (m.length === 0) { empty++; setGenProgress((p) => ({ ...p, done: p.done + 1 })); continue; }
@@ -766,14 +783,14 @@ function ClientReportsTab() {
 
       {/* Barra de pastas */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <FolderChip active={activeFolder === "all"} onClick={() => setActiveFolder("all")} label={`Todos (${reports?.length ?? 0})`} />
-        <FolderChip active={activeFolder === "none"} icon={Folder} onClick={() => setActiveFolder("none")} label={`Sem pasta (${countInFolder("none")})`} />
+        <FolderChip active={activeFolder === "all"} onClick={() => selectFolder("all")} label={`Todos (${reports?.length ?? 0})`} />
+        <FolderChip active={activeFolder === "none"} icon={Folder} onClick={() => selectFolder("none")} label={`Sem pasta (${countInFolder("none")})`} />
         {(folders ?? []).map((f: any) => (
           <div key={f.id} className="group/folder relative flex items-center">
             <FolderChip
               active={activeFolder === f.id}
               icon={Folder}
-              onClick={() => setActiveFolder(f.id)}
+              onClick={() => selectFolder(f.id)}
               label={`${f.name} (${countInFolder(f.id)})`}
             />
             <button

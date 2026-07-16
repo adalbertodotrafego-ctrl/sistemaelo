@@ -60,9 +60,18 @@ export const getClientsAdBudgets = createServerFn({ method: "GET" })
       };
     }
 
+    // Se TODAS as contas do Meta falharam (token expirado, app removido…), avisamos a
+    // tela uma única vez em vez de deixar cada cliente com um "Sem verba" enganoso.
+    const metaAccounts = meta.accounts ?? [];
+    const metaError =
+      meta.connected && metaAccounts.length > 0 && metaAccounts.every((a: any) => a.error)
+        ? (metaAccounts[0].error as string)
+        : null;
+
     return {
       metaConnected: meta.connected,
       googleConnected: google.connected,
+      metaError,
       byClient,
     };
   });

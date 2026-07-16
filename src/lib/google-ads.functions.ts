@@ -13,7 +13,10 @@ import { GOOGLE_ADS_ACCOUNTS } from "@/lib/google-ads-accounts";
 // GOOGLE_ADS_LOGIN_CUSTOMER_ID. Enquanto faltar alguma dessas variáveis, esta integração
 // fica "não conectada" e a verba em Clientes usa só o Meta.
 
-const API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v17";
+// Versões da Google Ads API são desativadas ~1 ano após o lançamento — v17 já
+// era; v21 (out/2025) vale até ~out/2026. Se um dia falhar com "version not
+// supported", basta setar GOOGLE_ADS_API_VERSION no servidor, sem mexer no código.
+const API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v21";
 const ADS_API = `https://googleads.googleapis.com/${API_VERSION}`;
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 

@@ -53,7 +53,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
         try {
           const [campaigns, periodIns, todayIns] = await Promise.all([
             graph(`/act_${acc.accountId}/campaigns`, {
-              fields: `id,daily_budget,insights.date_preset(${ACTIVE_WINDOW}){spend}`,
+              fields: `id,daily_budget,adsets.limit(200){daily_budget,effective_status},insights.date_preset(${ACTIVE_WINDOW}){spend}`,
               effective_status: JSON.stringify(["ACTIVE"]),
               limit: "500",
             }),
@@ -71,10 +71,15 @@ export const getMetaOverview = createServerFn({ method: "POST" })
           );
           // Verba = orçamento diário configurado nas campanhas ativas (independe de já
           // terem gastado ou não hoje) — é o teto que a conta pode gastar por dia.
-          const budgetDaily = (campaigns.data ?? []).reduce(
-            (sum: number, c: any) => sum + Number(c.daily_budget ?? 0) / 100,
-            0,
-          );
+          // Campanha sem CBO guarda o orçamento nos conjuntos de anúncios, então
+          // somamos o daily_budget da campanha E o dos adsets ativos dela.
+          const budgetDaily = (campaigns.data ?? []).reduce((sum: number, c: any) => {
+            const own = Number(c.daily_budget ?? 0) / 100;
+            const adsets = (c.adsets?.data ?? [])
+              .filter((a: any) => a.effective_status === "ACTIVE")
+              .reduce((s: number, a: any) => s + Number(a.daily_budget ?? 0) / 100, 0);
+            return sum + own + adsets;
+          }, 0);
           const p = periodIns.data?.[0];
           const t = todayIns.data?.[0];
           return {
@@ -139,7 +144,7 @@ export const getMetaAccountCampaigns = createServerFn({ method: "POST" })
 
     // 2) Métricas para exibir, no período que o usuário escolheu na tela.
     const json = await graph(`/act_${acc.accountId}/campaigns`, {
-      fields: `name,objective,effective_status,daily_budget,lifetime_budget,insights.date_preset(${preset}){spend,ctr,impressions,clicks,cpc,reach}`,
+      fields: `name,objective,effective_status,daily_budget,lifetime_budget,adsets.limit(200){daily_budget,effective_status},insights.date_preset(${preset}){spend,ctr,impressions,clicks,cpc,reach}`,
       effective_status: JSON.stringify(["ACTIVE"]),
       limit: "500",
     });
@@ -148,12 +153,17 @@ export const getMetaAccountCampaigns = createServerFn({ method: "POST" })
       .filter((c: any) => activeIds.has(c.id))
       .map((c: any) => {
         const ins = c.insights?.data?.[0];
+        // Campanha sem CBO: o orçamento diário mora nos conjuntos ativos.
+        const adsetBudget = (c.adsets?.data ?? [])
+          .filter((a: any) => a.effective_status === "ACTIVE")
+          .reduce((s: number, a: any) => s + Number(a.daily_budget ?? 0) / 100, 0);
+        const dailyBudget = c.daily_budget ? Number(c.daily_budget) / 100 : adsetBudget > 0 ? adsetBudget : null;
         return {
           id: c.id,
           name: c.name,
           objective: c.objective ?? null,
           status: c.effective_status,
-          dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : null,
+          dailyBudget,
           lifetimeBudget: c.lifetime_budget ? Number(c.lifetime_budget) / 100 : null,
           spend: Number(ins?.spend ?? 0),
           ctr: Number(ins?.ctr ?? 0),

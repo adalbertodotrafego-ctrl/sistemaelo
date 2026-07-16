@@ -125,13 +125,18 @@ function ClientsPage() {
         ...form,
         monthly_value: form.monthly_value ? Number(form.monthly_value) : 0,
       } as any;
-      if (editingId) {
-        const { error } = await supabase.from("clients").update(payload).eq("id", editingId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("clients").insert(payload);
-        if (error) throw error;
+      const run = async (p: any) =>
+        editingId
+          ? (await supabase.from("clients").update(p).eq("id", editingId)).error
+          : (await supabase.from("clients").insert(p)).error;
+      let error = await run(payload);
+      // Banco ainda sem a migração da coluna logo_url — salva o resto do cadastro
+      // mesmo assim em vez de travar o cliente inteiro por causa da imagem.
+      if (error && /logo_url/.test(error.message)) {
+        const { logo_url: _omit, ...rest } = payload;
+        error = await run(rest);
       }
+      if (error) throw error;
     },
     onSuccess: () => {
       toast.success(editingId ? "Cliente atualizado!" : "Cliente cadastrado!");
@@ -162,6 +167,10 @@ function ClientsPage() {
     [c.name, c.company, c.email, c.segment].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()),
   );
 
+  // Enquanto a migração da coluna logo_url não estiver aplicada no banco, o upload
+  // de logo fica oculto — evita o usuário subir uma imagem que não seria salva.
+  const logoColumnExists = !clients || clients.length === 0 || "logo_url" in (clients[0] as any);
+
   return (
     <div>
       <PageHeader
@@ -181,6 +190,7 @@ function ClientsPage() {
               <DialogContent className="max-w-2xl">
                 <DialogHeader><DialogTitle>{editingId ? "Editar cliente" : "Cadastrar novo cliente"}</DialogTitle></DialogHeader>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {logoColumnExists && (
                   <div className="flex items-center gap-4 sm:col-span-2">
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-surface/40">
                       {form.logo_url ? (
@@ -205,6 +215,7 @@ function ClientsPage() {
                     </div>
                     <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={onPickLogo} />
                   </div>
+                  )}
                   {[
                     ["name","Nome do contato *"],["company","Empresa"],["segment","Segmento"],
                     ["email","Email"],["phone","Telefone"],["whatsapp","WhatsApp"],
@@ -239,6 +250,13 @@ function ClientsPage() {
           </>
         }
       />
+
+      {(adBudgets as any)?.metaError && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Verba de mídia indisponível no momento — o Meta respondeu: "{(adBudgets as any).metaError}". Gere um novo token de acesso e atualize a variável META_ACCESS_TOKEN no servidor.
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -300,13 +318,28 @@ function ClientsPage() {
                 </div>
                 {adBudgets && (() => {
                   const budget = adBudgets.byClient?.[c.id] as ClientAdBudget | undefined;
+                  // Sem conta de anúncio vinculada (ou integração fora do ar) não é
+                  // "sem verba" — é só um cliente sem mídia paga monitorada.
+                  if (!budget) {
+                    return (
+                      <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
+                          <div className="font-display text-sm font-semibold text-muted-foreground">—</div>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          {(adBudgets as any).metaError ? "Integração indisponível" : "Sem conta de anúncios"}
+                        </span>
+                      </div>
+                    );
+                  }
                   const status = budgetStatus(budget);
                   return (
                     <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
                       <div>
                         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
                         <div className="font-display text-sm font-semibold">
-                          {budget && budget.budgetDaily > 0 ? `${money(budget.budgetDaily, budget.currency)}/dia` : "—"}
+                          {budget.budgetDaily > 0 ? `${money(budget.budgetDaily, budget.currency)}/dia` : "—"}
                         </div>
                       </div>
                       <Badge variant="outline" className={`gap-1 text-[10px] ${status.cls}`}>
