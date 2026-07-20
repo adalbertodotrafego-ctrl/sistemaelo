@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   LayoutDashboard, Users, Kanban, FolderKanban,
   UserCog, Wallet, Megaphone, Video, FolderOpen, BarChart3, Target,
-  Bell, Settings, User as UserIcon, X, FileText, Image,
+  Bell, Settings, User as UserIcon, X, FileText, CalendarHeart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -20,7 +20,7 @@ const nav = [
   ]},
   { group: "Crescimento", items: [
     { to: "/marketing", icon: Megaphone, label: "Meta Ads", key: "marketing" },
-    { to: "/social", icon: Image, label: "Social Media", key: "social" },
+    { to: "/social", icon: CalendarHeart, label: "Planejamento Elo", key: "social" },
     { to: "/goals", icon: Target, label: "Metas", key: "goals" },
     { to: "/reports", icon: BarChart3, label: "Relatórios", key: "reports" },
   ]},
