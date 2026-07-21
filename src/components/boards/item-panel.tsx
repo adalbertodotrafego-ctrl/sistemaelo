@@ -6,6 +6,9 @@ import { BoardAvatar } from "@/components/boards/avatar";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
+import { notifyUsers } from "@/lib/notifications";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { useProfiles, useUpdateItem } from "@/lib/boards/queries";
 import type { Item } from "@/lib/boards/types";
 import { useAddUpdate, useItemUpdates } from "@/lib/boards/updates";
@@ -26,9 +29,42 @@ function relativeTime(iso: string): string {
 export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: string; onClose: () => void }) {
   const { data: updates, isLoading } = useItemUpdates(item.id);
   const { data: profiles } = useProfiles();
+  const { user: currentUser } = useCurrentUser();
   const addUpdate = useAddUpdate(item.id);
   const updateItem = useUpdateItem(boardId);
   const [body, setBody] = useState("");
+  const [bodyMentions, setBodyMentions] = useState<string[]>([]);
+  const [desc, setDesc] = useState(item.description ?? "");
+  const [descMentions, setDescMentions] = useState<string[]>([]);
+  const [descLoadedFor, setDescLoadedFor] = useState(item.id);
+
+  // Trocou de demanda no painel → recarrega a descrição daquela demanda.
+  if (descLoadedFor !== item.id) {
+    setDescLoadedFor(item.id);
+    setDesc(item.description ?? "");
+    setDescMentions([]);
+  }
+  const descDirty = desc !== (item.description ?? "");
+
+  const saveDescription = () => {
+    updateItem.mutate(
+      { itemId: item.id, patch: { description: desc.trim() || null } },
+      {
+        onSuccess: () => {
+          if (descMentions.length > 0) {
+            notifyUsers(descMentions, {
+              kind: "mention",
+              title: "Você foi mencionado numa demanda",
+              body: item.name || "Abra o quadro para ver os detalhes.",
+              link: `/tasks/${boardId}`,
+              excludeUserId: currentUser?.id,
+            });
+            setDescMentions([]);
+          }
+        },
+      },
+    );
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,7 +77,20 @@ export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: str
   function submit() {
     const text = body.trim();
     if (!text) return;
-    addUpdate.mutate({ body: text });
+    addUpdate.mutate({ body: text }, {
+      onSuccess: () => {
+        if (bodyMentions.length > 0) {
+          notifyUsers(bodyMentions, {
+            kind: "mention",
+            title: "Você foi mencionado numa atualização",
+            body: item.name || text.slice(0, 80),
+            link: `/tasks/${boardId}`,
+            excludeUserId: currentUser?.id,
+          });
+        }
+        setBodyMentions([]);
+      },
+    });
     setBody("");
   }
 
@@ -64,18 +113,25 @@ export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: str
       {/* Descrição da demanda */}
       <div className="border-b border-border px-5 py-3">
         <Label className="text-xs text-muted-foreground">Descrição</Label>
-        <textarea
-          key={item.id}
-          defaultValue={item.description ?? ""}
-          placeholder="Detalhe a demanda: o que precisa ser feito, contexto, links…"
-          rows={4}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v !== (item.description ?? "")) updateItem.mutate({ itemId: item.id, patch: { description: v || null } });
-          }}
-          className="mt-1 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
-        <p className="mt-1 text-[10px] text-muted-foreground">Salva ao clicar fora.</p>
+        <div className="mt-1">
+          <MentionTextarea
+            rows={4}
+            value={desc}
+            onChange={setDesc}
+            mentionedIds={descMentions}
+            onMentionedIdsChange={setDescMentions}
+            profiles={profiles ?? []}
+            placeholder="Detalhe a demanda: o que precisa ser feito, contexto, links… use @ para marcar alguém."
+          />
+        </div>
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-[10px] text-muted-foreground">
+            {descDirty ? "Alterações não salvas" : "Tudo salvo"}
+          </p>
+          <Button size="sm" variant={descDirty ? "default" : "ghost"} disabled={!descDirty} onClick={saveDescription}>
+            Salvar descrição
+          </Button>
+        </div>
       </div>
 
       <div className="border-b border-border px-5 py-2">
@@ -83,15 +139,14 @@ export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: str
       </div>
 
       <div className="border-b border-border px-5 py-3">
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
-          }}
-          placeholder="Escreva uma atualização… (Ctrl+Enter envia)"
+        <MentionTextarea
           rows={3}
-          className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          value={body}
+          onChange={setBody}
+          mentionedIds={bodyMentions}
+          onMentionedIdsChange={setBodyMentions}
+          profiles={profiles ?? []}
+          placeholder="Escreva uma atualização… use @ para marcar alguém."
         />
         <div className="mt-2 flex justify-end">
           <Button size="sm" onClick={submit} disabled={!body.trim() || addUpdate.isPending}>Atualizar</Button>

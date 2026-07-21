@@ -112,6 +112,20 @@ export function useSaveCell(boardId: string) {
       );
       if (error) throw new Error(error.message);
 
+      // Automação "mover por status": a coluna guarda, nas próprias settings,
+      // um mapa índice-do-status → grupo. Mudou o status, a demanda anda
+      // sozinha para o grupo correspondente (ex.: Em andamento → Andamento).
+      if (args.column.type === "status") {
+        const map = (args.column.settings as { moveToGroup?: Record<string, string> } | null)?.moveToGroup;
+        const idx = (value as { index?: number } | null)?.index;
+        const targetGroup = map && idx != null ? map[String(idx)] : undefined;
+        if (targetGroup) {
+          const { error: mvErr } = await sb.from("items")
+            .update({ group_id: targetGroup }).eq("id", args.itemId);
+          if (mvErr) throw new Error(mvErr.message);
+        }
+      }
+
       // Marcou alguém como responsável → avisa a pessoa (a demanda passa a
       // aparecer na aba "Minhas demandas" dela).
       if (args.column.type === "people") {
@@ -281,6 +295,9 @@ export function useCreateClient() {
  * "Minhas demandas": itens de QUALQUER quadro onde a pessoa aparece numa
  * coluna do tipo People. Uma demanda só existe uma vez (no quadro de origem) —
  * esta é uma visão pessoal por cima, não uma cópia.
+ *
+ * Cada item vem com as datas que tiver (colunas date/timeline), para a tela
+ * conseguir separar o que é "de hoje".
  */
 export function useMyItems(userId: string | undefined) {
   return useQuery({
@@ -289,17 +306,37 @@ export function useMyItems(userId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await sb
         .from("column_values")
-        .select("item_id, value, columns!inner(type), items!inner(id, name, description, state, board_id, boards!inner(id, name, icon, color))")
+        .select("item_id, value, columns!inner(type), items!inner(id, name, description, state, board_id, updated_at, boards!inner(id, name, icon, color))")
         .eq("columns.type", "people")
         .eq("items.state", "active")
         .contains("value", { personsAndTeams: [{ id: userId, kind: "person" }] });
       if (error) throw new Error(error.message);
+
       // Um item pode ter mais de uma coluna People — desduplica por item.
       const seen = new Map<string, any>();
       for (const row of (data ?? []) as any[]) {
         if (!seen.has(row.item_id)) seen.set(row.item_id, row.items);
       }
-      return Array.from(seen.values());
+      const items = Array.from(seen.values());
+      if (items.length === 0) return [];
+
+      // Busca as datas desses itens para o filtro "hoje".
+      const ids = items.map((i) => i.id);
+      const { data: dateCells } = await sb
+        .from("column_values")
+        .select("item_id, value, columns!inner(type)")
+        .in("columns.type", ["date", "timeline"])
+        .in("item_id", ids);
+      const datesByItem = new Map<string, string[]>();
+      for (const cv of (dateCells ?? []) as any[]) {
+        const v = cv.value as { date?: string; from?: string; to?: string } | null;
+        const list = datesByItem.get(cv.item_id) ?? [];
+        if (v?.date) list.push(v.date);
+        if (v?.from) list.push(v.from);
+        if (v?.to) list.push(v.to);
+        datesByItem.set(cv.item_id, list);
+      }
+      return items.map((i) => ({ ...i, dates: datesByItem.get(i.id) ?? [] }));
     },
   });
 }

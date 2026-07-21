@@ -146,6 +146,7 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
 
       <StatusLabelsEditor
         column={statusCol}
+        groups={groups}
         open={statusOpen}
         onOpenChange={setStatusOpen}
         onSave={(columnId, labels, rest) => setStatusLabels(columnId, labels, rest)}

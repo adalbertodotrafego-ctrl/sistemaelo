@@ -11,11 +11,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, FolderPlus, Loader2, UserCheck,
+  Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, FolderPlus, Loader2, UserCheck, Copy,
 } from "lucide-react";
 import { useBoardsTree, useMyItems } from "@/lib/boards/queries";
-import { useArchiveBoard, useCreateBoard, useCreateWorkspace } from "@/lib/boards/admin";
+import { useArchiveBoard, useCreateBoard, useCreateWorkspace, useDuplicateBoard } from "@/lib/boards/admin";
 import { useFavorites } from "@/lib/boards/workspace-state";
 import { useCurrentUser } from "@/hooks/use-auth";
 
@@ -37,6 +38,10 @@ function BoardsHome() {
   const [boardName, setBoardName] = useState("");
   const [boardWs, setBoardWs] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<any>(null);
+  const duplicateBoard = useDuplicateBoard();
+  const [dupTarget, setDupTarget] = useState<any>(null);
+  const [dupName, setDupName] = useState("");
+  const [dupItems, setDupItems] = useState(false);
 
   // A migração ainda não aplicada aparece como erro de tabela inexistente.
   const missingTables = error && /does not exist|schema cache/i.test(error.message);
@@ -139,6 +144,9 @@ function BoardsHome() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}>
+                          <Copy className="mr-2 h-3.5 w-3.5" />Duplicar
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setArchiveTarget(b)}>
                           <Archive className="mr-2 h-3.5 w-3.5" />Arquivar
                         </DropdownMenuItem>
@@ -219,6 +227,43 @@ function BoardsHome() {
         </DialogContent>
       </Dialog>
 
+      {/* Duplicar quadro */}
+      <Dialog open={!!dupTarget} onOpenChange={(v) => !v && setDupTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Duplicar quadro</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome do novo quadro</Label>
+              <Input value={dupName} onChange={(e) => setDupName(e.target.value)} />
+            </div>
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/60 p-2.5">
+              <Checkbox checked={dupItems} onCheckedChange={(v) => setDupItems(Boolean(v))} className="mt-0.5" />
+              <span className="text-xs">
+                <span className="font-medium">Copiar também as demandas</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Desmarcado, vem só a estrutura: grupos, colunas, status e cores — o quadro nasce vazio,
+                  pronto para usar como modelo.
+                </span>
+              </span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDupTarget(null)}>Cancelar</Button>
+            <Button
+              disabled={!dupName.trim() || duplicateBoard.isPending}
+              onClick={() =>
+                duplicateBoard.mutate(
+                  { boardId: dupTarget.id, name: dupName.trim(), withItems: dupItems },
+                  { onSuccess: () => setDupTarget(null) },
+                )
+              }
+            >
+              {duplicateBoard.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Duplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={!!archiveTarget} onOpenChange={(v) => !v && setArchiveTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -248,7 +293,27 @@ function BoardsHome() {
  */
 function MyDemands() {
   const { user } = useCurrentUser();
-  const { data: items, isLoading, error } = useMyItems(user?.id);
+  const { data: all, isLoading, error } = useMyItems(user?.id);
+  const [scope, setScope] = useState<"today" | "all">("today");
+
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+
+  // "Hoje" = tem alguma data marcada para hoje, ou um cronograma que engloba
+  // hoje. Demanda sem data nenhuma também entra: é trabalho em aberto que
+  // ninguém agendou, e sumir com ela esconderia serviço.
+  const isToday = (it: any) => {
+    const dates: string[] = it.dates ?? [];
+    if (dates.length === 0) return true;
+    if (dates.includes(todayKey)) return true;
+    const min = dates.reduce((a, b) => (a < b ? a : b));
+    const max = dates.reduce((a, b) => (a > b ? a : b));
+    return min <= todayKey && todayKey <= max;
+  };
+
+  const items = scope === "today" ? (all ?? []).filter(isToday) : (all ?? []);
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando suas demandas…</p>;
   if (error) {
@@ -258,13 +323,37 @@ function MyDemands() {
       </div>
     );
   }
-  if (!items || items.length === 0) {
+  const scopeToggle = (
+    <div className="mb-4 inline-flex rounded-lg border border-border/60 p-0.5">
+      {([["today", "Hoje"], ["all", `Todas (${all?.length ?? 0})`]] as const).map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => setScope(v)}
+          className={
+            "rounded-md px-3 py-1.5 text-xs font-medium transition " +
+            (scope === v ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground")
+          }
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (items.length === 0) {
     return (
-      <EmptyState
-        icon={UserCheck}
-        title="Nenhuma demanda para você"
-        description="Quando alguém te marcar como responsável numa demanda (coluna de Pessoas), ela aparece aqui automaticamente."
-      />
+      <div>
+        {scopeToggle}
+        <EmptyState
+          icon={UserCheck}
+          title={scope === "today" ? "Nada para hoje" : "Nenhuma demanda para você"}
+          description={
+            scope === "today"
+              ? "Nenhuma demanda sua está marcada para hoje. Veja em \"Todas\" o que está agendado para outros dias."
+              : "Quando alguém te marcar como responsável numa demanda (coluna de Pessoas), ela aparece aqui automaticamente."
+          }
+        />
+      </div>
     );
   }
 
@@ -278,7 +367,9 @@ function MyDemands() {
   }
 
   return (
-    <div className="space-y-6">
+    <div>
+      {scopeToggle}
+      <div className="space-y-6">
       {Array.from(byBoard.values()).map(({ board, items: list }) => (
         <section key={board.id}>
           <div className="mb-2 flex items-center gap-2">
@@ -310,6 +401,7 @@ function MyDemands() {
           </div>
         </section>
       ))}
+      </div>
     </div>
   );
 }

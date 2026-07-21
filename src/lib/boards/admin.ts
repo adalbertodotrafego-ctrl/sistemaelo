@@ -56,6 +56,112 @@ export function useCreateBoard() {
   });
 }
 
+/**
+ * Duplica um quadro. Por padrão copia só a ESTRUTURA (grupos + colunas, com
+ * as configurações de status/cores) — as demandas ficam para trás, que é o
+ * caso de uso comum: usar um quadro pronto como modelo. Com `withItems`, os
+ * itens e os valores das células vêm junto.
+ */
+export function useDuplicateBoard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { boardId: string; name: string; withItems: boolean }) => {
+      const { data: auth } = await sb.auth.getUser();
+      const [orig, groups, columns] = await Promise.all([
+        sb.from("boards").select("*").eq("id", args.boardId).single(),
+        sb.from("groups").select("*").eq("board_id", args.boardId).order("position"),
+        sb.from("columns").select("*").eq("board_id", args.boardId).order("position"),
+      ]);
+      if (orig.error) throw new Error(orig.error.message);
+      if (groups.error) throw new Error(groups.error.message);
+      if (columns.error) throw new Error(columns.error.message);
+
+      const { data: board, error: bErr } = await sb.from("boards").insert({
+        workspace_id: orig.data.workspace_id,
+        name: args.name,
+        description: orig.data.description,
+        kind: orig.data.kind,
+        icon: orig.data.icon,
+        color: orig.data.color,
+        owner_id: auth.user?.id ?? null,
+        position: nextPosition(),
+      }).select("id").single();
+      if (bErr) throw new Error(bErr.message);
+      const newBoardId = board.id as string;
+
+      // Grupos e colunas: guarda o de-para para reapontar itens e células.
+      const groupMap = new Map<string, string>();
+      if ((groups.data ?? []).length) {
+        const { data: newGroups, error } = await sb.from("groups").insert(
+          (groups.data as any[]).map((g) => ({
+            board_id: newBoardId, title: g.title, color: g.color, position: g.position,
+          })),
+        ).select("id, position");
+        if (error) throw new Error(error.message);
+        const sortedOld = [...(groups.data as any[])].sort((a, b) => a.position - b.position);
+        const sortedNew = [...(newGroups as any[])].sort((a, b) => a.position - b.position);
+        sortedOld.forEach((g, i) => groupMap.set(g.id, sortedNew[i].id));
+      }
+
+      const columnMap = new Map<string, string>();
+      if ((columns.data ?? []).length) {
+        const { data: newCols, error } = await sb.from("columns").insert(
+          (columns.data as any[]).map((c) => ({
+            board_id: newBoardId, title: c.title, type: c.type,
+            settings: c.settings, position: c.position, width: c.width,
+          })),
+        ).select("id, position");
+        if (error) throw new Error(error.message);
+        const sortedOld = [...(columns.data as any[])].sort((a, b) => a.position - b.position);
+        const sortedNew = [...(newCols as any[])].sort((a, b) => a.position - b.position);
+        sortedOld.forEach((c, i) => columnMap.set(c.id, sortedNew[i].id));
+      }
+
+      if (args.withItems) {
+        const { data: items, error: iErr } = await sb.from("items").select("*")
+          .eq("board_id", args.boardId).eq("state", "active").is("parent_item_id", null).order("position");
+        if (iErr) throw new Error(iErr.message);
+        if ((items ?? []).length) {
+          const { data: newItems, error } = await sb.from("items").insert(
+            (items as any[]).map((it) => ({
+              board_id: newBoardId,
+              group_id: it.group_id ? (groupMap.get(it.group_id) ?? null) : null,
+              name: it.name, description: it.description, position: it.position,
+              creator_id: auth.user?.id ?? null,
+            })),
+          ).select("id, position");
+          if (error) throw new Error(error.message);
+          const sortedOld = [...(items as any[])].sort((a, b) => a.position - b.position);
+          const sortedNew = [...(newItems as any[])].sort((a, b) => a.position - b.position);
+          const itemMap = new Map<string, string>();
+          sortedOld.forEach((it, i) => itemMap.set(it.id, sortedNew[i].id));
+
+          const { data: cells } = await sb.from("column_values")
+            .select("item_id, column_id, value, text_cache, items!inner(board_id)")
+            .eq("items.board_id", args.boardId);
+          const rows = (cells ?? [])
+            .map((cv: any) => ({
+              item_id: itemMap.get(cv.item_id),
+              column_id: columnMap.get(cv.column_id),
+              value: cv.value,
+              text_cache: cv.text_cache,
+            }))
+            .filter((r: any) => r.item_id && r.column_id);
+          if (rows.length) {
+            const { error: cErr } = await sb.from("column_values").insert(rows);
+            if (cErr) throw new Error(cErr.message);
+          }
+        }
+      }
+
+      return newBoardId;
+    },
+    onSuccess: () => toast.success("Quadro duplicado!"),
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
 export function useRenameBoard(boardId: string) {
   const qc = useQueryClient();
   return useMutation({

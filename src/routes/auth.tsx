@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, getSettledSession } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,10 +21,22 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
+  // Entra assim que existir sessão — seja porque já estava logado, seja porque
+  // o retorno do Google acabou de ser processado. Só o getSession de uma vez
+  // não bastava: quando a sessão chegava um instante depois, a tela ficava
+  // parada aqui mesmo com o login tendo dado certo.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/dashboard" });
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      navigate({ to: "/dashboard" });
+    };
+    getSettledSession().then((session) => { if (session) go(); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session) go();
     });
+    return () => sub.subscription.unsubscribe();
   }, [navigate]);
 
   const signIn = async (e: React.FormEvent) => {
@@ -40,7 +52,7 @@ function AuthPage() {
   const signUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -50,6 +62,13 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
+    // Quando a confirmação por email está desligada, o cadastro já devolve a
+    // sessão pronta — antes a tela ficava parada pedindo pra "confirmar o
+    // email" que nunca chegava. Com sessão, entra direto.
+    if (data.session) {
+      toast.success("Conta criada! Bem-vindo.");
+      return navigate({ to: "/dashboard" });
+    }
     toast.success("Conta criada! Verifique seu email para confirmar.");
   };
 

@@ -7,27 +7,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { ColorSwatches } from "@/components/boards/color-swatches";
 import { GROUP_COLORS } from "@/components/boards/colors";
 import type { StatusLabel } from "@/lib/boards/column-types";
-import type { BoardColumn } from "@/lib/boards/types";
+import type { BoardColumn, Group } from "@/lib/boards/types";
 
-export function StatusLabelsEditor({ column, open, onOpenChange, onSave }: {
+export function StatusLabelsEditor({ column, groups, open, onOpenChange, onSave }: {
   column: BoardColumn | null;
+  groups: Group[];
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSave: (columnId: string, labels: StatusLabel[], rest: Record<string, unknown>) => void;
 }) {
   const settings = (column?.settings ?? {}) as Record<string, unknown>;
   const initial = (settings.labels as StatusLabel[] | undefined) ?? [];
+  const initialMoves = (settings.moveToGroup as Record<string, string> | undefined) ?? {};
   const [labels, setLabels] = useState<StatusLabel[]>(initial);
+  const [moves, setMoves] = useState<Record<string, string>>(initialMoves);
   const [dirtyFor, setDirtyFor] = useState<string | null>(null);
 
   // Recarrega quando abre em outra coluna (sem useEffect: compara a origem).
   if (open && column && dirtyFor !== column.id) {
     setDirtyFor(column.id);
     setLabels(initial);
+    setMoves(initialMoves);
   }
 
   const update = (index: number, patch: Partial<StatusLabel>) =>
@@ -43,8 +47,15 @@ export function StatusLabelsEditor({ column, open, onOpenChange, onSave }: {
 
   const save = () => {
     if (!column) return;
-    const { labels: _drop, ...rest } = settings;
-    onSave(column.id, labels.filter((l) => l.label.trim()), rest);
+    const { labels: _drop, moveToGroup: _drop2, ...rest } = settings;
+    const kept = labels.filter((l) => l.label.trim());
+    // Só guarda regras de status que ainda existem e apontam para grupo válido.
+    const cleanMoves = Object.fromEntries(
+      Object.entries(moves).filter(
+        ([idx, gid]) => gid && kept.some((l) => String(l.index) === idx) && groups.some((g) => g.id === gid),
+      ),
+    );
+    onSave(column.id, kept, { ...rest, moveToGroup: cleanMoves });
     onOpenChange(false);
   };
 
@@ -80,6 +91,24 @@ export function StatusLabelsEditor({ column, open, onOpenChange, onSave }: {
               <div className="mt-2 pl-7">
                 <ColorSwatches colors={GROUP_COLORS} value={l.color} size={18} onPick={(color) => update(l.index, { color })} />
               </div>
+              {groups.length > 0 && (
+                <div className="mt-2 flex items-center gap-2 pl-7">
+                  <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <span className="shrink-0 text-[11px] text-muted-foreground">mover para</span>
+                  <select
+                    value={moves[String(l.index)] ?? ""}
+                    onChange={(e) =>
+                      setMoves((prev) => ({ ...prev, [String(l.index)]: e.target.value }))
+                    }
+                    className="min-w-0 flex-1 rounded-sm border border-border bg-background px-1.5 py-1 text-xs text-foreground"
+                  >
+                    <option value="">— não mover —</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.title}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           ))}
 
