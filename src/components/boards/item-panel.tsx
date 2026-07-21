@@ -1,0 +1,106 @@
+// =====================================================================
+// Painel lateral do item — aba "Atualizações" (comentários)
+// =====================================================================
+import { useEffect, useState } from "react";
+import { BoardAvatar } from "@/components/boards/avatar";
+import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
+import { useProfiles } from "@/lib/boards/queries";
+import type { Item } from "@/lib/boards/types";
+import { useAddUpdate, useItemUpdates } from "@/lib/boards/updates";
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const mins = Math.floor((Date.now() - then) / 60_000);
+  if (mins < 1) return "agora";
+  if (mins < 60) return `há ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `há ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "ontem";
+  if (days < 7) return `há ${days} dias`;
+  return new Date(iso).toLocaleDateString("pt-BR");
+}
+
+export function ItemPanel({ item, onClose }: { item: Item; onClose: () => void }) {
+  const { data: updates, isLoading } = useItemUpdates(item.id);
+  const { data: profiles } = useProfiles();
+  const addUpdate = useAddUpdate(item.id);
+  const [body, setBody] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function submit() {
+    const text = body.trim();
+    if (!text) return;
+    addUpdate.mutate({ body: text });
+    setBody("");
+  }
+
+  return (
+    <aside className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card shadow-xl">
+      <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground" title={item.name}>
+          {item.name || "Sem nome"}
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          title="Fechar (Esc)"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </header>
+
+      <div className="border-b border-border px-5 py-2">
+        <span className="border-b-2 border-primary pb-2 text-sm font-medium text-foreground">Atualizações</span>
+      </div>
+
+      <div className="border-b border-border px-5 py-3">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+          }}
+          placeholder="Escreva uma atualização… (Ctrl+Enter envia)"
+          rows={3}
+          className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        />
+        <div className="mt-2 flex justify-end">
+          <Button size="sm" onClick={submit} disabled={!body.trim() || addUpdate.isPending}>Atualizar</Button>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        {isLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+        {updates?.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma atualização ainda. Comece a conversa deste item aqui. 💬
+          </p>
+        )}
+        {updates?.map((u) => {
+          const author = profiles?.find((p) => p.id === u.author_id);
+          const name = author?.full_name || author?.email || "Alguém";
+          return (
+            <article key={u.id} className="rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2">
+                <BoardAvatar name={name} id={u.author_id ?? u.id} size={26} />
+                <span className="text-sm font-medium text-foreground">{name}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{relativeTime(u.created_at)}</span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground/90">{u.body}</p>
+            </article>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}

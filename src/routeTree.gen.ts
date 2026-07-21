@@ -29,7 +29,9 @@ import { Route as AuthenticatedFilesRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCrmRouteImport } from './routes/_authenticated/crm'
 import { Route as AuthenticatedContractsRouteImport } from './routes/_authenticated/contracts'
+import { Route as AuthenticatedTasksIndexRouteImport } from './routes/_authenticated/tasks.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
+import { Route as AuthenticatedTasksBoardIdRouteImport } from './routes/_authenticated/tasks.$boardId'
 import { Route as AuthenticatedClientsIdRouteImport } from './routes/_authenticated/clients.$id'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -132,10 +134,21 @@ const AuthenticatedContractsRoute = AuthenticatedContractsRouteImport.update({
   path: '/contracts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTasksIndexRoute = AuthenticatedTasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/clients/',
     path: '/clients/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTasksBoardIdRoute =
+  AuthenticatedTasksBoardIdRouteImport.update({
+    id: '/tasks/$boardId',
+    path: '/tasks/$boardId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedClientsIdRoute = AuthenticatedClientsIdRouteImport.update({
@@ -165,7 +178,9 @@ export interface FileRoutesByFullPath {
   '/social': typeof AuthenticatedSocialRoute
   '/team': typeof AuthenticatedTeamRoute
   '/clients/$id': typeof AuthenticatedClientsIdRoute
+  '/tasks/$boardId': typeof AuthenticatedTasksBoardIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
+  '/tasks/': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -188,7 +203,9 @@ export interface FileRoutesByTo {
   '/social': typeof AuthenticatedSocialRoute
   '/team': typeof AuthenticatedTeamRoute
   '/clients/$id': typeof AuthenticatedClientsIdRoute
+  '/tasks/$boardId': typeof AuthenticatedTasksBoardIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
+  '/tasks': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -213,7 +230,9 @@ export interface FileRoutesById {
   '/_authenticated/social': typeof AuthenticatedSocialRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/clients/$id': typeof AuthenticatedClientsIdRoute
+  '/_authenticated/tasks/$boardId': typeof AuthenticatedTasksBoardIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
+  '/_authenticated/tasks/': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -238,7 +257,9 @@ export interface FileRouteTypes {
     | '/social'
     | '/team'
     | '/clients/$id'
+    | '/tasks/$boardId'
     | '/clients/'
+    | '/tasks/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -261,7 +282,9 @@ export interface FileRouteTypes {
     | '/social'
     | '/team'
     | '/clients/$id'
+    | '/tasks/$boardId'
     | '/clients'
+    | '/tasks'
   id:
     | '__root__'
     | '/'
@@ -285,7 +308,9 @@ export interface FileRouteTypes {
     | '/_authenticated/social'
     | '/_authenticated/team'
     | '/_authenticated/clients/$id'
+    | '/_authenticated/tasks/$boardId'
     | '/_authenticated/clients/'
+    | '/_authenticated/tasks/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -438,11 +463,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedContractsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/tasks/': {
+      id: '/_authenticated/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof AuthenticatedTasksIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/clients'
       fullPath: '/clients/'
       preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/tasks/$boardId': {
+      id: '/_authenticated/tasks/$boardId'
+      path: '/tasks/$boardId'
+      fullPath: '/tasks/$boardId'
+      preLoaderRoute: typeof AuthenticatedTasksBoardIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/clients/$id': {
@@ -472,7 +511,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSocialRoute: typeof AuthenticatedSocialRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedClientsIdRoute: typeof AuthenticatedClientsIdRoute
+  AuthenticatedTasksBoardIdRoute: typeof AuthenticatedTasksBoardIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
+  AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -492,7 +533,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSocialRoute: AuthenticatedSocialRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedClientsIdRoute: AuthenticatedClientsIdRoute,
+  AuthenticatedTasksBoardIdRoute: AuthenticatedTasksBoardIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
+  AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
