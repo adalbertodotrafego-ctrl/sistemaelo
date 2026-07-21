@@ -24,10 +24,12 @@ export function useCreateWorkspace() {
     mutationFn: async (args: { name: string }) => {
       const { data: auth } = await sb.auth.getUser();
       if (!auth.user?.id) throw new Error("Sessão expirada — entre novamente.");
-      const { data, error } = await sb.from("workspaces")
-        .insert({ name: args.name, owner_id: auth.user.id }).select().single();
+      // Sem .select(): o RETURNING é avaliado pela policy de SELECT, que exige
+      // membership — e o membership só é criado pelo trigger AFTER INSERT. Pedir
+      // a linha de volta aqui pode falhar mesmo com o INSERT tendo dado certo.
+      const { error } = await sb.from("workspaces")
+        .insert({ name: args.name, owner_id: auth.user.id });
       if (error) throw new Error(error.message);
-      return data;
     },
     onError: alertError,
     onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
@@ -39,15 +41,14 @@ export function useCreateBoard() {
   return useMutation({
     mutationFn: async (args: { workspaceId: string; name: string }) => {
       const { data: auth } = await sb.auth.getUser();
-      const { data, error } = await sb.from("boards").insert({
+      const { error } = await sb.from("boards").insert({
         workspace_id: args.workspaceId,
         name: args.name,
         kind: "public",
         owner_id: auth.user?.id ?? null,
         position: nextPosition(),
-      }).select().single();
+      });
       if (error) throw new Error(error.message);
-      return data;
     },
     onError: alertError,
     onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
