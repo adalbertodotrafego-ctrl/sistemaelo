@@ -5,17 +5,21 @@
 // dropdown, people, date, timeline, checkbox, link.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Building2, Plus } from "lucide-react";
 import { BoardAvatar } from "@/components/boards/avatar";
 import type { ColumnSettings, DropdownOption, StatusLabel } from "@/lib/boards/column-types";
+import { useClients, useCreateClient } from "@/lib/boards/queries";
 import type { BoardColumn, Cell as CellData, Profile } from "@/lib/boards/types";
 import { cn } from "@/lib/utils";
 
 const WIDTHS: Record<string, number> = {
   text: 200, long_text: 240, numbers: 120, status: 150, dropdown: 180,
-  people: 180, date: 130, timeline: 180, checkbox: 80, link: 190,
+  people: 180, client: 190, date: 130, timeline: 180, checkbox: 80, link: 190,
 };
-export function colWidth(type: string): number {
-  return WIDTHS[type] ?? 180;
+export const MIN_COL_WIDTH = 80;
+/** Largura efetiva: a que o usuário arrastou, ou o padrão do tipo. */
+export function colWidth(type: string, width?: number | null): number {
+  return width && width >= MIN_COL_WIDTH ? width : (WIDTHS[type] ?? 180);
 }
 
 // ── popover reutilizável (fecha em clique fora / Esc) ────────────────
@@ -57,13 +61,14 @@ export function Cell({ column, cell, profiles, onSave }: {
   profiles: Profile[];
   onSave: (input: unknown) => void;
 }) {
-  const width = colWidth(column.type);
+  const width = colWidth(column.type, column.width);
   const settings = (column.settings ?? {}) as ColumnSettings;
 
   switch (column.type) {
     case "status": return <StatusCell width={width} cell={cell} settings={settings} onSave={onSave} />;
     case "dropdown": return <DropdownCell width={width} cell={cell} settings={settings} onSave={onSave} />;
     case "people": return <PeopleCell width={width} cell={cell} profiles={profiles} onSave={onSave} />;
+    case "client": return <ClientCell width={width} cell={cell} onSave={onSave} />;
     case "timeline": return <TimelineCell width={width} cell={cell} onSave={onSave} />;
     case "checkbox": return <CheckboxCell width={width} cell={cell} onSave={onSave} />;
     case "date": return <DateCell width={width} cell={cell} onSave={onSave} />;
@@ -294,6 +299,96 @@ function PeopleCell({ width, cell, profiles, onSave }: {
             })}
             {filtered.length === 0 && <p className="px-2 py-1.5 text-sm text-muted-foreground">Ninguém encontrado</p>}
           </div>
+        </PopoverCard>
+      )}
+    </div>
+  );
+}
+
+// ── Cliente (escolhe do cadastro do Sistema Elo, ou cria na hora) ────
+function ClientCell({ width, cell, onSave }: {
+  width: number; cell: CellData | undefined; onSave: (input: unknown) => void;
+}) {
+  const { open, setOpen, ref } = usePopover();
+  const [query, setQuery] = useState("");
+  const { data: clients } = useClients();
+  const createClient = useCreateClient();
+  const current = cell?.value as { id?: string; name?: string } | null;
+
+  const filtered = (clients ?? []).filter((c) =>
+    `${c.name} ${c.company ?? ""}`.toLowerCase().includes(query.toLowerCase()),
+  );
+  const exactExists = (clients ?? []).some((c) => c.name.toLowerCase() === query.trim().toLowerCase());
+
+  return (
+    <div ref={ref} style={{ width }} className="relative h-9 shrink-0 border-l border-border/50">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-full w-full items-center gap-1.5 overflow-hidden px-2 hover:bg-accent/40"
+        title={current?.name ?? ""}
+      >
+        {current?.name ? (
+          <>
+            <Building2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate text-sm text-foreground">{current.name}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground/60">+</span>
+        )}
+      </button>
+      {open && (
+        <PopoverCard width={260}>
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar ou criar cliente…"
+            className="mb-1 w-full rounded-sm border border-border bg-background px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
+          />
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => { onSave({ id: c.id, name: c.name }); setOpen(false); }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent",
+                  current?.id === c.id && "bg-primary/10",
+                )}
+              >
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{c.company || c.name}</span>
+                {current?.id === c.id && <span className="ml-auto text-primary">✓</span>}
+              </button>
+            ))}
+            {query.trim() && !exactExists && (
+              <button
+                type="button"
+                onClick={() =>
+                  createClient.mutate(query.trim(), {
+                    onSuccess: (novo) => { onSave({ id: novo.id, name: novo.name }); setOpen(false); setQuery(""); },
+                  })
+                }
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-accent"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                Cadastrar "{query.trim()}"
+              </button>
+            )}
+            {filtered.length === 0 && !query.trim() && (
+              <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum cliente cadastrado</p>
+            )}
+          </div>
+          {current?.id && (
+            <button
+              type="button"
+              onClick={() => { onSave(null); setOpen(false); }}
+              className="mt-1 block w-full rounded-sm px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
+            >
+              Limpar
+            </button>
+          )}
         </PopoverCard>
       )}
     </div>

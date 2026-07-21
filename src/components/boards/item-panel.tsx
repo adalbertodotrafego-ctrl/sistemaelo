@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { BoardAvatar } from "@/components/boards/avatar";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
-import { useProfiles } from "@/lib/boards/queries";
+import { Label } from "@/components/ui/label";
+import { useProfiles, useUpdateItem } from "@/lib/boards/queries";
 import type { Item } from "@/lib/boards/types";
 import { useAddUpdate, useItemUpdates } from "@/lib/boards/updates";
 
@@ -22,10 +23,11 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
-export function ItemPanel({ item, onClose }: { item: Item; onClose: () => void }) {
+export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: string; onClose: () => void }) {
   const { data: updates, isLoading } = useItemUpdates(item.id);
   const { data: profiles } = useProfiles();
   const addUpdate = useAddUpdate(item.id);
+  const updateItem = useUpdateItem(boardId);
   const [body, setBody] = useState("");
 
   useEffect(() => {
@@ -58,6 +60,23 @@ export function ItemPanel({ item, onClose }: { item: Item; onClose: () => void }
           <X className="h-4 w-4" />
         </button>
       </header>
+
+      {/* Descrição da demanda */}
+      <div className="border-b border-border px-5 py-3">
+        <Label className="text-xs text-muted-foreground">Descrição</Label>
+        <textarea
+          key={item.id}
+          defaultValue={item.description ?? ""}
+          placeholder="Detalhe a demanda: o que precisa ser feito, contexto, links…"
+          rows={4}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (item.description ?? "")) updateItem.mutate({ itemId: item.id, patch: { description: v || null } });
+          }}
+          className="mt-1 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        />
+        <p className="mt-1 text-[10px] text-muted-foreground">Salva ao clicar fora.</p>
+      </div>
 
       <div className="border-b border-border px-5 py-2">
         <span className="border-b-2 border-primary pb-2 text-sm font-medium text-foreground">Atualizações</span>

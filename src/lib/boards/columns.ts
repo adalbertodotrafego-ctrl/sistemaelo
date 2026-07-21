@@ -345,6 +345,39 @@ const linkType: ColumnTypeDef<LinkValue> = {
   },
 };
 
+// ── Cliente (aponta para a tabela clients do Sistema Elo) ────────────
+// Guarda id + nome: o id liga ao cadastro, o nome mantém o texto legível
+// (e o text_cache pesquisável) mesmo se o cliente for renomeado depois.
+type ClientValue = { id: string; name: string };
+const clientType: ColumnTypeDef<ClientValue> = {
+  type: "client",
+  label: "Cliente",
+  icon: "Building2",
+  defaultSettings: () => ({}),
+  defaultValue: () => null,
+  parse: (input) => {
+    if (!input) return null;
+    const v = input as Partial<ClientValue>;
+    return v.id ? { id: String(v.id), name: String(v.name ?? "") } : null;
+  },
+  validate: () => VALID,
+  toText: (v) => v?.name ?? "",
+  compare: (a, b) => nullsLast(a, b) ?? a!.name.localeCompare(b!.name, "pt-BR"),
+  operators: ["is_empty", "is_not_empty", "any_of", "none_of", "contains_text"],
+  matches: (v, op, operand) => {
+    const id = v?.id;
+    const set = Array.isArray(operand) ? operand.map(String) : [String(operand)];
+    switch (op) {
+      case "is_empty": return id == null;
+      case "is_not_empty": return id != null;
+      case "any_of": return id != null && set.includes(id);
+      case "none_of": return id == null || !set.includes(id);
+      case "contains_text": return lower(v?.name).includes(lower(operand));
+      default: return false;
+    }
+  },
+};
+
 // ── Registry ─────────────────────────────────────────────────────────
 const DEFS: ColumnTypeDef<any, any>[] = [
   textType,
@@ -353,6 +386,7 @@ const DEFS: ColumnTypeDef<any, any>[] = [
   statusType,
   dropdownType,
   peopleType,
+  clientType,
   dateType,
   timelineType,
   checkboxType,

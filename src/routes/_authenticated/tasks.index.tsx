@@ -10,12 +10,14 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, FolderPlus, Loader2,
+  Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, FolderPlus, Loader2, UserCheck,
 } from "lucide-react";
-import { useBoardsTree } from "@/lib/boards/queries";
+import { useBoardsTree, useMyItems } from "@/lib/boards/queries";
 import { useArchiveBoard, useCreateBoard, useCreateWorkspace } from "@/lib/boards/admin";
 import { useFavorites } from "@/lib/boards/workspace-state";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_authenticated/tasks/")({
   head: () => ({ meta: [{ title: "Tarefas — Elo Marketing OS" }] }),
@@ -69,6 +71,17 @@ function BoardsHome() {
           </div>
         </div>
       )}
+
+      <Tabs defaultValue="boards">
+        <TabsList className="mb-5">
+          <TabsTrigger value="boards">Quadros</TabsTrigger>
+          <TabsTrigger value="mine">
+            <UserCheck className="mr-1.5 h-3.5 w-3.5" />Minhas demandas
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="mine" className="mt-0"><MyDemands /></TabsContent>
+        <TabsContent value="boards" className="mt-0">
 
       {isLoading && <p className="text-sm text-muted-foreground">Carregando quadros…</p>}
 
@@ -150,6 +163,9 @@ function BoardsHome() {
         </section>
       ))}
 
+        </TabsContent>
+      </Tabs>
+
       {/* Nova área de trabalho */}
       <Dialog open={wsOpen} onOpenChange={setWsOpen}>
         <DialogContent className="max-w-sm">
@@ -221,6 +237,79 @@ function BoardsHome() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/**
+ * "Minhas demandas" — tudo em que você foi marcado como responsável, de
+ * qualquer quadro. A demanda continua morando no quadro de origem: esta é
+ * uma visão pessoal por cima, não uma cópia.
+ */
+function MyDemands() {
+  const { user } = useCurrentUser();
+  const { data: items, isLoading, error } = useMyItems(user?.id);
+
+  if (isLoading) return <p className="text-sm text-muted-foreground">Carregando suas demandas…</p>;
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        Erro ao carregar: {error.message}
+      </div>
+    );
+  }
+  if (!items || items.length === 0) {
+    return (
+      <EmptyState
+        icon={UserCheck}
+        title="Nenhuma demanda para você"
+        description="Quando alguém te marcar como responsável numa demanda (coluna de Pessoas), ela aparece aqui automaticamente."
+      />
+    );
+  }
+
+  // Agrupa por quadro para dar contexto de onde cada demanda mora.
+  const byBoard = new Map<string, { board: any; items: any[] }>();
+  for (const it of items) {
+    const b = it.boards;
+    if (!b) continue;
+    if (!byBoard.has(b.id)) byBoard.set(b.id, { board: b, items: [] });
+    byBoard.get(b.id)!.items.push(it);
+  }
+
+  return (
+    <div className="space-y-6">
+      {Array.from(byBoard.values()).map(({ board, items: list }) => (
+        <section key={board.id}>
+          <div className="mb-2 flex items-center gap-2">
+            {board.icon && <span>{board.icon}</span>}
+            <Link
+              to="/tasks/$boardId"
+              params={{ boardId: board.id }}
+              className="font-display text-sm font-semibold hover:text-primary"
+            >
+              {board.name}
+            </Link>
+            <span className="text-xs text-muted-foreground">{list.length}</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {list.map((it: any) => (
+              <Link
+                key={it.id}
+                to="/tasks/$boardId"
+                params={{ boardId: board.id }}
+                className="surface-card block p-3 transition hover:border-primary/40"
+                style={board.color ? { borderLeft: `3px solid ${board.color}` } : undefined}
+              >
+                <div className="text-sm font-medium">{it.name || "Sem nome"}</div>
+                {it.description && (
+                  <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{it.description}</p>
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

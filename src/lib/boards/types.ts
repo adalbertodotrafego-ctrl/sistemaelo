@@ -37,6 +37,10 @@ export type Board = {
   owner_id: string | null;
   position: number;
   state: ItemState;
+  /** emoji exibido junto ao nome */
+  icon: string | null;
+  /** cor de destaque do quadro (hex) */
+  color: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -58,6 +62,8 @@ export type BoardColumn = {
   type: string;
   settings: Record<string, unknown> | null;
   position: number;
+  /** largura em px definida ao arrastar a borda do cabeçalho */
+  width: number | null;
   created_at: string;
 };
 
@@ -67,6 +73,7 @@ export type Item = {
   group_id: string | null;
   parent_item_id: string | null;
   name: string;
+  description: string | null;
   position: number;
   state: ItemState;
   creator_id: string | null;

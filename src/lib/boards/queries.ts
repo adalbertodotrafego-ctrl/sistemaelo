@@ -6,6 +6,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { notifyUsers } from "@/lib/notifications";
 import { sb } from "./client";
 import { prepareCellWrite } from "./columns";
 import type { ColumnSettings } from "./column-types";
@@ -99,7 +100,7 @@ export function useBoardData(boardId: string) {
 export function useSaveCell(boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { itemId: string; column: BoardColumn; input: unknown }) => {
+    mutationFn: async (args: { itemId: string; column: BoardColumn; input: unknown; itemName?: string }) => {
       const { value, text_cache } = prepareCellWrite(
         args.column.type,
         args.input,
@@ -110,6 +111,22 @@ export function useSaveCell(boardId: string) {
         { onConflict: "item_id,column_id" },
       );
       if (error) throw new Error(error.message);
+
+      // Marcou alguém como responsável → avisa a pessoa (a demanda passa a
+      // aparecer na aba "Minhas demandas" dela).
+      if (args.column.type === "people") {
+        const ids = ((value as { personsAndTeams?: { id: string }[] } | null)?.personsAndTeams ?? []).map((p) => p.id);
+        if (ids.length > 0) {
+          const { data: auth } = await sb.auth.getUser();
+          await notifyUsers(ids, {
+            kind: "task",
+            title: "Você é responsável por uma demanda",
+            body: args.itemName || "Abra o quadro para ver os detalhes.",
+            link: `/tasks/${boardId}`,
+            excludeUserId: auth.user?.id ?? null,
+          });
+        }
+      }
     },
     // Otimista: a célula responde na hora (checkbox/status/data), sem esperar
     // o refetch. Se falhar, o snapshot volta + alerta.
@@ -217,6 +234,73 @@ export function useAddItem(boardId: string) {
     },
     onError: reportWriteError,
     onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+  });
+}
+
+/** Descrição (e outros campos simples) da demanda. */
+export function useUpdateItem(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { itemId: string; patch: { name?: string; description?: string | null } }) => {
+      const { error } = await sb.from("items").update(args.patch).eq("id", args.itemId);
+      if (error) throw new Error(error.message);
+    },
+    onError: reportWriteError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+  });
+}
+
+// ── Clientes do Sistema Elo (coluna do tipo "Cliente") ───────────────
+export function useClients() {
+  return useQuery({
+    queryKey: ["clients-min"],
+    queryFn: async () =>
+      ok(await sb.from("clients").select("id, name, company").order("name")) as
+        { id: string; name: string; company: string | null }[],
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateClient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await sb.from("clients").insert({ name, status: "active" }).select("id, name").single();
+      if (error) throw new Error(error.message);
+      return data as { id: string; name: string };
+    },
+    onError: reportWriteError,
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["clients-min"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+/**
+ * "Minhas demandas": itens de QUALQUER quadro onde a pessoa aparece numa
+ * coluna do tipo People. Uma demanda só existe uma vez (no quadro de origem) —
+ * esta é uma visão pessoal por cima, não uma cópia.
+ */
+export function useMyItems(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["my-items", userId],
+    enabled: Boolean(userId),
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("column_values")
+        .select("item_id, value, columns!inner(type), items!inner(id, name, description, state, board_id, boards!inner(id, name, icon, color))")
+        .eq("columns.type", "people")
+        .eq("items.state", "active")
+        .contains("value", { personsAndTeams: [{ id: userId, kind: "person" }] });
+      if (error) throw new Error(error.message);
+      // Um item pode ter mais de uma coluna People — desduplica por item.
+      const seen = new Map<string, any>();
+      for (const row of (data ?? []) as any[]) {
+        if (!seen.has(row.item_id)) seen.set(row.item_id, row.items);
+      }
+      return Array.from(seen.values());
+    },
   });
 }
 

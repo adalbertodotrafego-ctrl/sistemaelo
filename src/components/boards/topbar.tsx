@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, Search, Wifi } from "lucide-react";
+import { ArrowLeft, Plus, Search, Settings2, Wifi } from "lucide-react";
+import { BoardSettings } from "@/components/boards/board-settings";
 import { useRenameBoard } from "@/lib/boards/admin";
 import type { Board } from "@/lib/boards/types";
 import { cn } from "@/lib/utils";
@@ -18,9 +19,13 @@ export function BoardTopbar({ board, tab, onTabChange, search, onSearchChange, o
 }) {
   const renameBoard = useRenameBoard(board.id);
   const [editing, setEditing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <header className="shrink-0 border-b border-border bg-card px-4 pt-3">
+    <header
+      className="shrink-0 border-b border-border bg-card px-4 pt-3"
+      style={board.color ? { borderTop: `3px solid ${board.color}` } : undefined}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <Link to="/tasks" className="mb-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
@@ -45,10 +50,11 @@ export function BoardTopbar({ board, tab, onTabChange, search, onSearchChange, o
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="block max-w-lg cursor-text truncate rounded-md px-1 text-left font-display text-xl font-semibold text-foreground hover:bg-accent"
+              className="flex max-w-lg cursor-text items-center gap-2 truncate rounded-md px-1 text-left font-display text-xl font-semibold text-foreground hover:bg-accent"
               title="Clique para renomear"
             >
-              {board.name}
+              {board.icon && <span className="shrink-0">{board.icon}</span>}
+              <span className="truncate">{board.name}</span>
             </button>
           )}
           {board.description && <p className="mt-0.5 truncate px-1 text-sm text-muted-foreground">{board.description}</p>}
@@ -70,9 +76,14 @@ export function BoardTopbar({ board, tab, onTabChange, search, onSearchChange, o
               placeholder="Buscar"
             />
           </div>
+          <Button variant="outline" size="icon" onClick={() => setSettingsOpen(true)} title="Configurações do quadro">
+            <Settings2 className="h-4 w-4" />
+          </Button>
           <Button onClick={onNewItem}><Plus className="mr-2 h-4 w-4" />Novo item</Button>
         </div>
       </div>
+
+      <BoardSettings board={board} open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <nav className="mt-3 flex gap-1">
         {([["table", "Tabela principal"], ["kanban", "Kanban"]] as const).map(([key, label]) => (

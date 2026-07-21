@@ -94,7 +94,7 @@ function BoardPage() {
           )}
         </div>
       </div>
-      {panelItem && <ItemPanel item={panelItem} onClose={() => setOpenItemId(null)} />}
+      {panelItem && <ItemPanel item={panelItem} boardId={boardId} onClose={() => setOpenItemId(null)} />}
     </div>
   );
 }

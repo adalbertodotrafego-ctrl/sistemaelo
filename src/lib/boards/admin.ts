@@ -1,10 +1,11 @@
 // =====================================================================
 // CRUD administrativo — workspaces, boards, grupos e colunas
 // =====================================================================
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { sb } from "./client";
 import { getColumnType } from "./columns";
+import type { StatusLabel } from "./column-types";
 
 // Paleta de cores de grupo.
 const GROUP_COLORS = ["#579bfc", "#00c875", "#fdab3d", "#e2445c", "#a25ddc", "#037f4c", "#66ccff", "#bb3354"];
@@ -80,6 +81,97 @@ export function useArchiveBoard() {
     },
     onError: alertError,
     onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
+/** Aparência e dados do quadro: nome, descrição, emoji e cor. */
+export function useUpdateBoard(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: { name?: string; description?: string | null; icon?: string | null; color?: string | null }) => {
+      const { error } = await sb.from("boards").update(patch).eq("id", boardId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: ["boards-tree"] });
+    },
+  });
+}
+
+// ── Responsáveis do quadro (quem enxerga). Só admin gerencia. ────────
+export function useBoardMembers(boardId: string) {
+  return useQuery({
+    queryKey: ["board-members", boardId],
+    queryFn: async () => {
+      const { data, error } = await sb.from("board_members").select("user_id").eq("board_id", boardId);
+      if (error) throw new Error(error.message);
+      return (data ?? []).map((r: any) => r.user_id as string);
+    },
+    enabled: Boolean(boardId),
+  });
+}
+
+export function useToggleBoardMember(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { userId: string; add: boolean }) => {
+      const { error } = args.add
+        ? await sb.from("board_members").insert({ board_id: boardId, user_id: args.userId })
+        : await sb.from("board_members").delete().eq("board_id", boardId).eq("user_id", args.userId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["board-members", boardId] });
+      qc.invalidateQueries({ queryKey: ["boards-tree"] });
+    },
+  });
+}
+
+/** Largura da coluna (arrastar a borda do cabeçalho, como planilha). */
+export function useSetColumnWidth(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { columnId: string; width: number }) => {
+      const { error } = await sb.from("columns").update({ width: Math.round(args.width) }).eq("id", args.columnId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+  });
+}
+
+/** Settings da coluna — usado pelo editor de labels de Status/Tipo. */
+export function useUpdateColumnSettings(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { columnId: string; settings: Record<string, unknown> }) => {
+      const { error } = await sb.from("columns").update({ settings: args.settings }).eq("id", args.columnId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+  });
+}
+
+export function useSetStatusLabels(boardId: string) {
+  const update = useUpdateColumnSettings(boardId);
+  return (columnId: string, labels: StatusLabel[], rest: Record<string, unknown> = {}) =>
+    update.mutate({ columnId, settings: { ...rest, labels } });
+}
+
+/** Cor do grupo. */
+export function useSetGroupColor(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { groupId: string; color: string }) => {
+      const { error } = await sb.from("groups").update({ color: args.color }).eq("id", args.groupId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
   });
 }
 

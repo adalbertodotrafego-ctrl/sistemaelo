@@ -5,10 +5,15 @@ import {
   DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
-import { useState } from "react";
-import { Cell, colWidth } from "@/components/boards/cell";
+import { useEffect, useRef, useState } from "react";
+import { Palette } from "lucide-react";
+import { Cell, MIN_COL_WIDTH, colWidth } from "@/components/boards/cell";
+import { StatusLabelsEditor } from "@/components/boards/status-editor";
+import { ColorSwatches } from "@/components/boards/color-swatches";
+import { GROUP_COLORS } from "@/components/boards/colors";
 import {
   useCreateColumn, useCreateGroup, useDeleteColumn, useDeleteGroup, useRenameGroup,
+  useSetColumnWidth, useSetGroupColor, useSetStatusLabels,
 } from "@/lib/boards/admin";
 import { COLUMN_TYPE_LIST } from "@/lib/boards/columns";
 import { useAddItem, useMoveItem, useRenameItem, useSaveCell, useSetItemState } from "@/lib/boards/queries";
@@ -28,8 +33,11 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
 }) {
   const moveItem = useMoveItem(boardId);
   const createGroup = useCreateGroup(boardId);
+  const setStatusLabels = useSetStatusLabels(boardId);
   const [dragging, setDragging] = useState<Item | null>(null);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [statusCol, setStatusCol] = useState<BoardColumn | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const itemsByGroup = new Map<string, Item[]>();
@@ -68,7 +76,7 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
     }
   }
 
-  const gridWidth = NAME_COL_WIDTH + columns.reduce((acc, c) => acc + colWidth(c.type), 0) + 44;
+  const gridWidth = NAME_COL_WIDTH + columns.reduce((acc, c) => acc + colWidth(c.type, c.width), 0) + 44;
 
   return (
     <DndContext
@@ -78,7 +86,11 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
       onDragCancel={() => setDragging(null)}
     >
       <div className="px-4 py-4" style={{ minWidth: gridWidth + 32 }}>
-        <HeaderRow boardId={boardId} columns={columns} />
+        <HeaderRow
+          boardId={boardId}
+          columns={columns}
+          onEditStatus={(c) => { setStatusCol(c); setStatusOpen(true); }}
+        />
 
         {groups.map((g) => (
           <GroupSection
@@ -131,14 +143,24 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
           </div>
         )}
       </DragOverlay>
+
+      <StatusLabelsEditor
+        column={statusCol}
+        open={statusOpen}
+        onOpenChange={setStatusOpen}
+        onSave={(columnId, labels, rest) => setStatusLabels(columnId, labels, rest)}
+      />
     </DndContext>
   );
 }
 
 // ── Cabeçalho de colunas + "+" (nova coluna) ─────────────────────────
-function HeaderRow({ boardId, columns }: { boardId: string; columns: BoardColumn[] }) {
+function HeaderRow({ boardId, columns, onEditStatus }: {
+  boardId: string; columns: BoardColumn[]; onEditStatus: (c: BoardColumn) => void;
+}) {
   const createColumn = useCreateColumn(boardId);
   const deleteColumn = useDeleteColumn(boardId);
+  const setWidth = useSetColumnWidth(boardId);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -147,22 +169,38 @@ function HeaderRow({ boardId, columns }: { boardId: string; columns: BoardColumn
       {columns.map((c) => (
         <div
           key={c.id}
-          style={{ width: colWidth(c.type) }}
+          style={{ width: colWidth(c.type, c.width) }}
           className="group/col relative shrink-0 border-l border-border/50 px-2 py-2 text-center"
           title={`${c.title} (${c.type})`}
         >
           <span className="truncate">{c.title}</span>
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(`Excluir a coluna "${c.title}"? Os valores serão perdidos.`))
-                deleteColumn.mutate({ columnId: c.id });
-            }}
-            className="absolute right-1 top-1.5 hidden rounded px-1 text-muted-foreground/60 hover:bg-accent hover:text-destructive group-hover/col:block"
-            title="Excluir coluna"
-          >
-            ×
-          </button>
+          <div className="absolute right-1 top-1.5 hidden items-center gap-0.5 group-hover/col:flex">
+            {c.type === "status" && (
+              <button
+                type="button"
+                onClick={() => onEditStatus(c)}
+                className="rounded px-1 text-muted-foreground/60 hover:bg-accent hover:text-primary"
+                title="Editar status e cores"
+              >
+                <Palette className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Excluir a coluna "${c.title}"? Os valores serão perdidos.`))
+                  deleteColumn.mutate({ columnId: c.id });
+              }}
+              className="rounded px-1 text-muted-foreground/60 hover:bg-accent hover:text-destructive"
+              title="Excluir coluna"
+            >
+              ×
+            </button>
+          </div>
+          <ResizeHandle
+            width={colWidth(c.type, c.width)}
+            onCommit={(w) => setWidth.mutate({ columnId: c.id, width: w })}
+          />
         </div>
       ))}
       <div className="relative w-11 shrink-0 border-l border-border/50 text-center">
@@ -197,6 +235,61 @@ function HeaderRow({ boardId, columns }: { boardId: string; columns: BoardColumn
   );
 }
 
+/**
+ * Alça de redimensionar (borda direita do cabeçalho). Enquanto arrasta,
+ * a largura muda só visualmente via CSS var; ao soltar, grava no banco —
+ * evita uma escrita por pixel movido.
+ */
+function ResizeHandle({ width, onCommit }: { width: number; onCommit: (w: number) => void }) {
+  const [dragging, setDragging] = useState(false);
+  const startX = useRef(0);
+  const startW = useRef(width);
+  const cellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const parent = cellRef.current?.parentElement as HTMLElement | null;
+    const onMove = (e: MouseEvent) => {
+      const next = Math.max(MIN_COL_WIDTH, startW.current + (e.clientX - startX.current));
+      if (parent) parent.style.width = `${next}px`;
+    };
+    const onUp = (e: MouseEvent) => {
+      setDragging(false);
+      const next = Math.max(MIN_COL_WIDTH, startW.current + (e.clientX - startX.current));
+      if (next !== startW.current) onCommit(next);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [dragging, onCommit]);
+
+  return (
+    <div
+      ref={cellRef}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startX.current = e.clientX;
+        startW.current = width;
+        setDragging(true);
+      }}
+      onDoubleClick={() => onCommit(0)}
+      title="Arraste para redimensionar (duplo clique volta ao padrão)"
+      className={cn(
+        "absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize",
+        dragging ? "bg-primary/40" : "hover:bg-primary/30",
+      )}
+    />
+  );
+}
+
 // ── Grupo ────────────────────────────────────────────────────────────
 function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpenItem, readOnlyGroup }: {
   boardId: string; group: Group; columns: BoardColumn[]; items: Item[]; cellMap: CellMap;
@@ -204,8 +297,10 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
 }) {
   const renameGroup = useRenameGroup(boardId);
   const deleteGroup = useDeleteGroup(boardId);
+  const setGroupColor = useSetGroupColor(boardId);
   const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
   const { setNodeRef, isOver } = useDroppable({ id: `group:${group.id}` });
 
   return (
@@ -243,7 +338,23 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
           {items.length} {items.length === 1 ? "item" : "itens"}
         </span>
         {!readOnlyGroup && !renaming && (
-          <span className="hidden gap-1 group-hover/gh:flex">
+          <span className="relative hidden gap-1 group-hover/gh:flex">
+            <button
+              type="button"
+              onClick={() => setColorOpen((v) => !v)}
+              className="rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              Cor
+            </button>
+            {colorOpen && (
+              <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-popover p-2 shadow-lg">
+                <ColorSwatches
+                  colors={GROUP_COLORS}
+                  value={group.color}
+                  onPick={(color) => { setGroupColor.mutate({ groupId: group.id, color }); setColorOpen(false); }}
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setRenaming(true)}
@@ -336,7 +447,7 @@ function ItemRow({ boardId, item, columns, cellMap, profiles, onOpenItem }: {
           column={c}
           cell={cellMap[item.id]?.[c.id]}
           profiles={profiles}
-          onSave={(input) => saveCell.mutate({ itemId: item.id, column: c, input })}
+          onSave={(input) => saveCell.mutate({ itemId: item.id, column: c, input, itemName: item.name })}
         />
       ))}
       <div className="w-11 shrink-0 border-l border-border/50" />
