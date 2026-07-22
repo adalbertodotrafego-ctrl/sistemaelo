@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, PartyPopper } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Entrar — Elo Marketing OS" }] }),
@@ -20,6 +20,22 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [invite, setInvite] = useState<{ id: string; note: string | null } | null>(null);
+  const [inviteInvalid, setInviteInvalid] = useState(false);
+
+  // Chegou por link de convite (?convite=token): valida e dá as boas-vindas.
+  // Um token inválido não trava ninguém — a pessoa ainda entra normalmente.
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("convite");
+    if (!token) return;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from("invites").select("id, note, expires_at, used_at").eq("token", token).maybeSingle();
+      if (error || !data) return setInviteInvalid(true);
+      if (data.used_at || new Date(data.expires_at) < new Date()) return setInviteInvalid(true);
+      setInvite({ id: data.id, note: data.note });
+    })();
+  }, []);
 
   // Entra assim que existir sessão — seja porque já estava logado, seja porque
   // o retorno do Google acabou de ser processado. Só o getSession de uma vez
@@ -62,6 +78,15 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
+
+    // Queima o convite para o link não circular indefinidamente. Se falhar,
+    // não atrapalha: a conta já foi criada.
+    if (invite) {
+      await (supabase as any).from("invites")
+        .update({ used_at: new Date().toISOString(), used_by: data.user?.id ?? null })
+        .eq("id", invite.id);
+    }
+
     // Quando a confirmação por email está desligada, o cadastro já devolve a
     // sessão pronta — antes a tela ficava parada pedindo pra "confirmar o
     // email" que nunca chegava. Com sessão, entra direto.
@@ -103,7 +128,27 @@ function AuthPage() {
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</span>
         </Link>
 
-        <Tabs defaultValue="signin">
+        {invite && (
+          <div className="mb-5 rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <div className="flex items-center gap-2">
+              <PartyPopper className="h-4 w-4 shrink-0 text-primary" />
+              <span className="font-display text-sm font-semibold">Você foi convidado! 🎉</span>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {invite.note ? <>Convite para <strong className="text-foreground">{invite.note}</strong>. </> : null}
+              Bem-vindo ao <strong className="text-foreground">Elo Marketing OS</strong> — o sistema onde a agência
+              acompanha clientes, campanhas, demandas e resultados. Crie sua conta abaixo para começar.
+            </p>
+          </div>
+        )}
+        {inviteInvalid && (
+          <div className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
+            Este link de convite expirou ou já foi usado. Você ainda pode entrar ou criar sua conta normalmente —
+            ou peça um link novo para alguém do time.
+          </div>
+        )}
+
+        <Tabs defaultValue={invite ? "signup" : "signin"}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="signin">Entrar</TabsTrigger>
             <TabsTrigger value="signup">Criar conta</TabsTrigger>

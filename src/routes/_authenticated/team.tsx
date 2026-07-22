@@ -56,7 +56,12 @@ function TeamPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const roleOf = (id: string) => roles?.find((r: any) => r.user_id === id)?.role ?? "member";
+  // Uma pessoa pode ter mais de um papel (é comum ter 'member' E 'admin').
+  // Procurar só a primeira linha mostrava "member" para quem também era admin —
+  // e o botão oferecia "Tornar admin" para quem já era. O que vale é ter a
+  // linha de admin, igual ao has_role() que o banco usa nas policies.
+  const isAdminUser = (id: string) => (roles ?? []).some((r: any) => r.user_id === id && r.role === "admin");
+  const roleOf = (id: string) => (isAdminUser(id) ? "admin" : "member");
 
   const setAdmin = useMutation({
     mutationFn: async ({ userId, makeAdmin }: { userId: string; makeAdmin: boolean }) => {
@@ -64,6 +69,12 @@ function TeamPage() {
         const { error } = await supabase.from("user_roles").upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" });
         if (error) throw error;
       } else {
+        // Só admin pode mexer em papéis: tirar o último deixaria o sistema sem
+        // ninguém capaz de devolver a permissão.
+        const admins = (roles ?? []).filter((r: any) => r.role === "admin");
+        if (admins.length <= 1) {
+          throw new Error("Este é o último administrador — promova outra pessoa antes de remover.");
+        }
         const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", "admin");
         if (error) throw error;
       }
