@@ -39,6 +39,8 @@ export interface StatusLabel {
   index: number;
   label: string;
   color: string;
+  /** Marca a demanda como concluída — é o gatilho da recorrência. */
+  done?: boolean;
 }
 export interface DropdownOption {
   id: number;

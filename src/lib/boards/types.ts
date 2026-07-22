@@ -27,6 +27,15 @@ export type BoardFolder = {
   created_at: string;
 };
 
+export type Recurrence = "daily" | "weekly" | "biweekly" | "monthly";
+
+export const RECURRENCE_LABELS: Record<Recurrence, string> = {
+  daily: "Todo dia",
+  weekly: "1x por semana",
+  biweekly: "A cada 15 dias",
+  monthly: "1x por mês",
+};
+
 export type Board = {
   id: string;
   workspace_id: string;
@@ -74,6 +83,10 @@ export type Item = {
   parent_item_id: string | null;
   name: string;
   description: string | null;
+  /** null = demanda avulsa; senão daily | weekly | biweekly | monthly */
+  recurrence: Recurrence | null;
+  /** quando foi concluída — base para saber se já virou o período */
+  completed_at: string | null;
   position: number;
   state: ItemState;
   creator_id: string | null;

@@ -8,6 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { notifyUsers } from "@/lib/notifications";
 import { sb } from "./client";
+import { isDueAgain } from "./recurrence";
+import type { Recurrence } from "./types";
 import { prepareCellWrite } from "./columns";
 import type { ColumnSettings } from "./column-types";
 import type { BoardColumn, BoardData, CellMap, Item, Profile } from "./types";
@@ -84,16 +86,60 @@ export function useBoardData(boardId: string) {
       for (const cv of ok(values) as any[]) {
         (cellMap[cv.item_id] ??= {})[cv.column_id] = { value: cv.value, text_cache: cv.text_cache };
       }
+
+      // Demandas recorrentes concluídas num período que já passou voltam a
+      // ficar pendentes: limpa o carimbo e o status de conclusão. Roda aqui,
+      // ao abrir o quadro, para não depender de rotina agendada no servidor.
+      const reopened = await reopenDueRecurring(ok(items) as Item[], ok(columns) as BoardColumn[], cellMap);
+
       return {
         board: ok(board),
         groups: ok(groups),
         columns: ok(columns),
-        items: ok(items),
+        items: reopened,
         cellMap,
       };
     },
     enabled: Boolean(boardId),
   });
+}
+
+/**
+ * Reabre as demandas recorrentes cujo período de conclusão já passou:
+ * apaga o `completed_at` e limpa as células de status marcadas como
+ * "conclui a demanda". Devolve a lista de itens já com o estado novo, para
+ * a tela não precisar de um segundo carregamento.
+ */
+async function reopenDueRecurring(items: Item[], columns: BoardColumn[], cellMap: CellMap): Promise<Item[]> {
+  const due = items.filter((it) => isDueAgain(it.completed_at, it.recurrence));
+  if (due.length === 0) return items;
+
+  const doneCols = columns
+    .filter((c) => c.type === "status")
+    .map((c) => ({
+      id: c.id,
+      doneIdx: new Set(
+        (((c.settings ?? {}) as { labels?: { index: number; done?: boolean }[] }).labels ?? [])
+          .filter((l) => l.done).map((l) => l.index),
+      ),
+    }))
+    .filter((c) => c.doneIdx.size > 0);
+
+  const ids = due.map((it) => it.id);
+  await sb.from("items").update({ completed_at: null }).in("id", ids);
+
+  for (const it of due) {
+    for (const col of doneCols) {
+      const idx = (cellMap[it.id]?.[col.id]?.value as { index?: number } | null)?.index;
+      if (idx != null && col.doneIdx.has(idx)) {
+        await sb.from("column_values").delete().eq("item_id", it.id).eq("column_id", col.id);
+        delete cellMap[it.id][col.id];
+      }
+    }
+  }
+
+  const dueSet = new Set(ids);
+  return items.map((it) => (dueSet.has(it.id) ? { ...it, completed_at: null } : it));
 }
 
 // ── Escritas ─────────────────────────────────────────────────────────
@@ -112,18 +158,29 @@ export function useSaveCell(boardId: string) {
       );
       if (error) throw new Error(error.message);
 
-      // Automação "mover por status": a coluna guarda, nas próprias settings,
-      // um mapa índice-do-status → grupo. Mudou o status, a demanda anda
-      // sozinha para o grupo correspondente (ex.: Em andamento → Andamento).
       if (args.column.type === "status") {
-        const map = (args.column.settings as { moveToGroup?: Record<string, string> } | null)?.moveToGroup;
+        const settings = args.column.settings as
+          { moveToGroup?: Record<string, string>; labels?: { index: number; done?: boolean }[] } | null;
         const idx = (value as { index?: number } | null)?.index;
-        const targetGroup = map && idx != null ? map[String(idx)] : undefined;
+
+        // Automação "mover por status": a coluna guarda um mapa
+        // índice-do-status → grupo. Mudou o status, a demanda anda sozinha
+        // para o grupo correspondente (ex.: Em andamento → Andamento).
+        const targetGroup = settings?.moveToGroup && idx != null ? settings.moveToGroup[String(idx)] : undefined;
         if (targetGroup) {
           const { error: mvErr } = await sb.from("items")
             .update({ group_id: targetGroup }).eq("id", args.itemId);
           if (mvErr) throw new Error(mvErr.message);
         }
+
+        // Status marcado como "conclui a demanda" carimba completed_at — é
+        // dele que a recorrência parte para saber quando reabrir a demanda.
+        const label = idx != null ? settings?.labels?.find((l) => l.index === idx) : undefined;
+        const isDone = Boolean(label?.done);
+        const { error: cErr } = await sb.from("items")
+          .update({ completed_at: isDone ? new Date().toISOString() : null })
+          .eq("id", args.itemId);
+        if (cErr) throw new Error(cErr.message);
       }
 
       // Marcou alguém como responsável → avisa a pessoa (a demanda passa a
@@ -235,15 +292,46 @@ export function useMoveItem(boardId: string) {
 export function useAddItem(boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { groupId: string; name: string; position: number }) => {
+    mutationFn: async (args: {
+      groupId: string; name: string; position: number;
+      recurrence?: Recurrence | null;
+      /** Valores já escolhidos na criação (ex.: tipo de demanda). */
+      cells?: { column: BoardColumn; input: unknown }[];
+    }) => {
       const { data: auth } = await sb.auth.getUser();
-      const { error } = await sb.from("items").insert({
+      const { data, error } = await sb.from("items").insert({
         board_id: boardId,
         group_id: args.groupId,
         name: args.name,
         position: args.position,
+        recurrence: args.recurrence ?? null,
         creator_id: auth.user?.id ?? null,
+      }).select("id").single();
+      if (error) throw new Error(error.message);
+
+      const rows = (args.cells ?? []).map(({ column, input }) => {
+        const { value, text_cache } = prepareCellWrite(column.type, input, (column.settings ?? {}) as ColumnSettings);
+        return { item_id: data.id as string, column_id: column.id, value, text_cache };
       });
+      if (rows.length) {
+        const { error: cErr } = await sb.from("column_values").insert(rows);
+        if (cErr) throw new Error(cErr.message);
+      }
+    },
+    onError: reportWriteError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+  });
+}
+
+/** Descrição, recorrência e outros campos simples da demanda. */
+export function useUpdateItem(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      itemId: string;
+      patch: { name?: string; description?: string | null; recurrence?: Recurrence | null; completed_at?: string | null };
+    }) => {
+      const { error } = await sb.from("items").update(args.patch).eq("id", args.itemId);
       if (error) throw new Error(error.message);
     },
     onError: reportWriteError,
@@ -251,16 +339,70 @@ export function useAddItem(boardId: string) {
   });
 }
 
-/** Descrição (e outros campos simples) da demanda. */
-export function useUpdateItem(boardId: string) {
+/**
+ * Move a demanda para outro quadro. As colunas de destino são casadas pelo
+ * par título+tipo: o que casa leva o valor junto, o que não casa é descartado
+ * (guardar um valor apontando para coluna de outro quadro corromperia a
+ * planilha de destino).
+ */
+export function useMoveItemToBoard(boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { itemId: string; patch: { name?: string; description?: string | null } }) => {
-      const { error } = await sb.from("items").update(args.patch).eq("id", args.itemId);
+    mutationFn: async (args: { itemId: string; targetBoardId: string }) => {
+      const [fromCols, toCols, toGroups] = await Promise.all([
+        sb.from("columns").select("id, title, type").eq("board_id", boardId),
+        sb.from("columns").select("id, title, type").eq("board_id", args.targetBoardId),
+        sb.from("groups").select("id").eq("board_id", args.targetBoardId).order("position").limit(1),
+      ]);
+      if (fromCols.error) throw new Error(fromCols.error.message);
+      if (toCols.error) throw new Error(toCols.error.message);
+      if (toGroups.error) throw new Error(toGroups.error.message);
+
+      const targetGroup = (toGroups.data ?? [])[0]?.id;
+      if (!targetGroup) throw new Error("O quadro de destino não tem nenhum grupo. Crie um grupo lá primeiro.");
+
+      const keyOf = (c: { title: string; type: string }) => `${c.title.trim().toLowerCase()}|${c.type}`;
+      const targetByKey = new Map<string, string>(
+        (toCols.data ?? []).map((c: any) => [keyOf(c), c.id as string] as [string, string]),
+      );
+      const remap = new Map<string, string>();
+      for (const c of (fromCols.data ?? []) as any[]) {
+        const dest = targetByKey.get(keyOf(c));
+        if (dest) remap.set(c.id, dest);
+      }
+
+      const { data: cells } = await sb.from("column_values").select("column_id").eq("item_id", args.itemId);
+      for (const cv of (cells ?? []) as any[]) {
+        const dest = remap.get(cv.column_id);
+        if (dest) {
+          await sb.from("column_values").update({ column_id: dest }).eq("item_id", args.itemId).eq("column_id", cv.column_id);
+        } else {
+          await sb.from("column_values").delete().eq("item_id", args.itemId).eq("column_id", cv.column_id);
+        }
+      }
+
+      const { error } = await sb.from("items")
+        .update({ board_id: args.targetBoardId, group_id: targetGroup })
+        .eq("id", args.itemId);
       if (error) throw new Error(error.message);
     },
+    onSuccess: () => toast.success("Demanda movida para o outro quadro!"),
     onError: reportWriteError,
-    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["board"] });
+      qc.invalidateQueries({ queryKey: ["my-items"] });
+    },
+  });
+}
+
+/** Quadros que o usuário enxerga — para escolher o destino de uma demanda. */
+export function useBoardOptions() {
+  return useQuery({
+    queryKey: ["board-options"],
+    queryFn: async () =>
+      ok(await sb.from("boards").select("id, name, icon").eq("state", "active").order("name")) as
+        { id: string; name: string; icon: string | null }[],
+    staleTime: 60_000,
   });
 }
 

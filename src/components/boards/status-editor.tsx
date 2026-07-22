@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { ColorSwatches } from "@/components/boards/color-swatches";
@@ -91,6 +91,14 @@ export function StatusLabelsEditor({ column, groups, open, onOpenChange, onSave 
               <div className="mt-2 pl-7">
                 <ColorSwatches colors={GROUP_COLORS} value={l.color} size={18} onPick={(color) => update(l.index, { color })} />
               </div>
+              <label className="mt-2 flex cursor-pointer items-center gap-2 pl-7 text-[11px] text-muted-foreground">
+                <Checkbox
+                  checked={Boolean(l.done)}
+                  onCheckedChange={(v) => update(l.index, { done: Boolean(v) } as Partial<StatusLabel>)}
+                />
+                Este status conclui a demanda
+                <span className="text-muted-foreground/70">(usado pelas demandas recorrentes)</span>
+              </label>
               {groups.length > 0 && (
                 <div className="mt-2 flex items-center gap-2 pl-7">
                   <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />

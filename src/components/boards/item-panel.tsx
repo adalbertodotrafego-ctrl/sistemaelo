@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { MentionTextarea } from "@/components/ui-extras/mention-textarea";
 import { notifyUsers } from "@/lib/notifications";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useProfiles, useUpdateItem } from "@/lib/boards/queries";
-import type { Item } from "@/lib/boards/types";
+import { Repeat, MoveRight } from "lucide-react";
+import { useBoardOptions, useMoveItemToBoard, useProfiles, useUpdateItem } from "@/lib/boards/queries";
+import { RECURRENCE_LABELS, type Item, type Recurrence } from "@/lib/boards/types";
 import { useAddUpdate, useItemUpdates } from "@/lib/boards/updates";
 
 function relativeTime(iso: string): string {
@@ -32,6 +33,8 @@ export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: str
   const { user: currentUser } = useCurrentUser();
   const addUpdate = useAddUpdate(item.id);
   const updateItem = useUpdateItem(boardId);
+  const moveToBoard = useMoveItemToBoard(boardId);
+  const { data: boards } = useBoardOptions();
   const [body, setBody] = useState("");
   const [bodyMentions, setBodyMentions] = useState<string[]>([]);
   const [desc, setDesc] = useState(item.description ?? "");
@@ -109,6 +112,54 @@ export function ItemPanel({ item, boardId, onClose }: { item: Item; boardId: str
           <X className="h-4 w-4" />
         </button>
       </header>
+
+      {/* Recorrência e envio para outro quadro */}
+      <div className="grid grid-cols-2 gap-3 border-b border-border px-5 py-3">
+        <div>
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Repeat className="h-3 w-3" />Recorrência
+          </Label>
+          <select
+            value={item.recurrence ?? ""}
+            onChange={(e) =>
+              updateItem.mutate({
+                itemId: item.id,
+                patch: { recurrence: (e.target.value || null) as Recurrence | null },
+              })
+            }
+            className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+          >
+            <option value="">Não se repete</option>
+            {(Object.keys(RECURRENCE_LABELS) as Recurrence[]).map((r) => (
+              <option key={r} value={r}>{RECURRENCE_LABELS[r]}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <MoveRight className="h-3 w-3" />Enviar para o quadro
+          </Label>
+          <select
+            value=""
+            onChange={(e) => {
+              const target = e.target.value;
+              if (!target) return;
+              moveToBoard.mutate({ itemId: item.id, targetBoardId: target }, { onSuccess: onClose });
+            }}
+            className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+          >
+            <option value="">Escolher quadro…</option>
+            {(boards ?? []).filter((b) => b.id !== boardId).map((b) => (
+              <option key={b.id} value={b.id}>{b.icon ? `${b.icon} ` : ""}{b.name}</option>
+            ))}
+          </select>
+        </div>
+        {item.recurrence && (
+          <p className="col-span-2 -mt-1 text-[10px] text-muted-foreground">
+            Ao marcar um status de conclusão, a demanda volta a ficar pendente sozinha no próximo período.
+          </p>
+        )}
+      </div>
 
       {/* Descrição da demanda */}
       <div className="border-b border-border px-5 py-3">

@@ -6,7 +6,8 @@ import {
   useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
 import { useEffect, useRef, useState } from "react";
-import { Palette } from "lucide-react";
+import { Palette, Repeat, Sparkles } from "lucide-react";
+import { NewDemandDialog } from "@/components/boards/new-demand-dialog";
 import { Cell, MIN_COL_WIDTH, colWidth } from "@/components/boards/cell";
 import { StatusLabelsEditor } from "@/components/boards/status-editor";
 import { ColorSwatches } from "@/components/boards/color-swatches";
@@ -17,7 +18,7 @@ import {
 } from "@/lib/boards/admin";
 import { COLUMN_TYPE_LIST } from "@/lib/boards/columns";
 import { useAddItem, useMoveItem, useRenameItem, useSaveCell, useSetItemState } from "@/lib/boards/queries";
-import type { BoardColumn, CellMap, Group, Item, Profile } from "@/lib/boards/types";
+import { RECURRENCE_LABELS, type BoardColumn, type CellMap, type Group, type Item, type Profile } from "@/lib/boards/types";
 import { cn } from "@/lib/utils";
 
 const NAME_COL_WIDTH = 340;
@@ -96,6 +97,7 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
           <GroupSection
             key={g.id} boardId={boardId} group={g} columns={columns}
             items={itemsByGroup.get(g.id) ?? []} cellMap={cellMap} profiles={profiles} onOpenItem={onOpenItem}
+            onEditStatus={(c) => { setStatusCol(c); setStatusOpen(true); }}
           />
         ))}
 
@@ -104,7 +106,9 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
             boardId={boardId}
             group={{ id: "__orphans", title: "Sem grupo", color: "#c4c4c4" } as Group}
             columns={columns} items={orphans} cellMap={cellMap} profiles={profiles}
-            onOpenItem={onOpenItem} readOnlyGroup
+            onOpenItem={onOpenItem}
+            onEditStatus={(c) => { setStatusCol(c); setStatusOpen(true); }}
+            readOnlyGroup
           />
         )}
 
@@ -292,9 +296,10 @@ function ResizeHandle({ width, onCommit }: { width: number; onCommit: (w: number
 }
 
 // ── Grupo ────────────────────────────────────────────────────────────
-function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpenItem, readOnlyGroup }: {
+function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpenItem, onEditStatus, readOnlyGroup }: {
   boardId: string; group: Group; columns: BoardColumn[]; items: Item[]; cellMap: CellMap;
-  profiles: Profile[]; onOpenItem: (item: Item) => void; readOnlyGroup?: boolean;
+  profiles: Profile[]; onOpenItem: (item: Item) => void;
+  onEditStatus: (c: BoardColumn) => void; readOnlyGroup?: boolean;
 }) {
   const renameGroup = useRenameGroup(boardId);
   const deleteGroup = useDeleteGroup(boardId);
@@ -394,7 +399,14 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
             />
           ))}
           {!readOnlyGroup && (
-            <AddItemRow boardId={boardId} groupId={group.id} nextPosition={(items.at(-1)?.position ?? 0) + 1} />
+            <AddItemRow
+              boardId={boardId}
+              groupId={group.id}
+              groupTitle={group.title}
+              nextPosition={(items.at(-1)?.position ?? 0) + 1}
+              columns={columns}
+              onEditStatus={onEditStatus}
+            />
           )}
         </div>
       )}
@@ -432,6 +444,11 @@ function ItemRow({ boardId, item, columns, cellMap, profiles, onOpenItem }: {
           ⋮⋮
         </span>
         <ItemName name={item.name} onRename={(name) => renameItem.mutate({ itemId: item.id, name })} />
+        {item.recurrence && (
+          <span className="mr-1 shrink-0 text-primary" title={`Recorrente — ${RECURRENCE_LABELS[item.recurrence]}`}>
+            <Repeat className="h-3 w-3" />
+          </span>
+        )}
         <button
           type="button"
           onClick={() => onOpenItem(item)}
@@ -517,11 +534,13 @@ function ItemName({ name, onRename }: { name: string; onRename: (name: string) =
   );
 }
 
-function AddItemRow({ boardId, groupId, nextPosition }: {
-  boardId: string; groupId: string; nextPosition: number;
+function AddItemRow({ boardId, groupId, groupTitle, nextPosition, columns, onEditStatus }: {
+  boardId: string; groupId: string; groupTitle: string; nextPosition: number;
+  columns: BoardColumn[]; onEditStatus: (c: BoardColumn) => void;
 }) {
   const addItem = useAddItem(boardId);
   const [value, setValue] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   function commit() {
     const name = value.trim();
@@ -531,7 +550,7 @@ function AddItemRow({ boardId, groupId, nextPosition }: {
   }
 
   return (
-    <div className="flex bg-muted/30">
+    <div className="flex items-center bg-muted/30">
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -540,6 +559,24 @@ function AddItemRow({ boardId, groupId, nextPosition }: {
         placeholder="+ Adicionar item"
         style={{ width: NAME_COL_WIDTH }}
         className="h-9 bg-transparent px-7 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:bg-card"
+      />
+      <button
+        type="button"
+        onClick={() => setDialogOpen(true)}
+        className="ml-1 flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        title="Criar demanda com tipo e recorrência"
+      >
+        <Sparkles className="h-3 w-3" />Demanda
+      </button>
+      <NewDemandDialog
+        boardId={boardId}
+        groupId={groupId}
+        groupTitle={groupTitle}
+        nextPosition={nextPosition}
+        columns={columns}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onEditTypes={(c) => { setDialogOpen(false); onEditStatus(c); }}
       />
     </div>
   );
