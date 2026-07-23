@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as PendingRouteImport } from './routes/pending'
 import { Route as GoogleCalendarCallbackRouteImport } from './routes/google-calendar-callback'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -37,6 +38,11 @@ import { Route as AuthenticatedClientsIdRouteImport } from './routes/_authentica
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PendingRoute = PendingRouteImport.update({
+  id: '/pending',
+  path: '/pending',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GoogleCalendarCallbackRoute = GoogleCalendarCallbackRouteImport.update({
@@ -161,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
+  '/pending': typeof PendingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/contracts': typeof AuthenticatedContractsRoute
   '/crm': typeof AuthenticatedCrmRoute
@@ -186,6 +193,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
+  '/pending': typeof PendingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/contracts': typeof AuthenticatedContractsRoute
   '/crm': typeof AuthenticatedCrmRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
+  '/pending': typeof PendingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/contracts': typeof AuthenticatedContractsRoute
   '/_authenticated/crm': typeof AuthenticatedCrmRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/google-calendar-callback'
+    | '/pending'
     | '/reset-password'
     | '/contracts'
     | '/crm'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/google-calendar-callback'
+    | '/pending'
     | '/reset-password'
     | '/contracts'
     | '/crm'
@@ -291,6 +302,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/google-calendar-callback'
+    | '/pending'
     | '/reset-password'
     | '/_authenticated/contracts'
     | '/_authenticated/crm'
@@ -318,6 +330,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   GoogleCalendarCallbackRoute: typeof GoogleCalendarCallbackRoute
+  PendingRoute: typeof PendingRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
 }
 
@@ -328,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pending': {
+      id: '/pending'
+      path: '/pending'
+      fullPath: '/pending'
+      preLoaderRoute: typeof PendingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/google-calendar-callback': {
@@ -546,6 +566,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   GoogleCalendarCallbackRoute: GoogleCalendarCallbackRoute,
+  PendingRoute: PendingRoute,
   ResetPasswordRoute: ResetPasswordRoute,
 }
 export const routeTree = rootRouteImport

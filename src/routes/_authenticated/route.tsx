@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { getSettledSession } from "@/integrations/supabase/client";
+import { getSettledSession, getAccessState } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app-shell/app-shell";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -10,6 +10,9 @@ export const Route = createFileRoute("/_authenticated")({
     // logado de volta para a tela de login.
     const session = await getSettledSession();
     if (!session?.user) throw redirect({ to: "/auth" });
+    // Sistema privado: conta nova entra pendente até um admin aprovar.
+    const { approved } = await getAccessState(session.user.id);
+    if (!approved) throw redirect({ to: "/pending" });
     return { user: session.user };
   },
   component: AuthenticatedLayout,

@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -14,10 +17,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, Loader2, UserCheck, Copy, Crown, Shield,
+  FolderPlus, FolderOpen, FolderInput, Pencil, Trash2, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { BoardSettings } from "@/components/boards/board-settings";
 import { useBoardsTree, useMyItems } from "@/lib/boards/queries";
-import { useArchiveBoard, useCreateBoard, useCreateWorkspace, useDuplicateBoard } from "@/lib/boards/admin";
+import {
+  useArchiveBoard, useCreateBoard, useCreateWorkspace, useDuplicateBoard,
+  useRenameWorkspace, useCreateFolder, useRenameFolder, useDeleteFolder,
+  useMoveBoardToFolder, useReorderBoard,
+} from "@/lib/boards/admin";
 import { useFavorites } from "@/lib/boards/workspace-state";
 import { useCurrentUser } from "@/hooks/use-auth";
 
@@ -32,6 +40,12 @@ function BoardsHome() {
   const createWorkspace = useCreateWorkspace();
   const createBoard = useCreateBoard();
   const archiveBoard = useArchiveBoard();
+  const renameWorkspace = useRenameWorkspace();
+  const createFolder = useCreateFolder();
+  const renameFolder = useRenameFolder();
+  const deleteFolder = useDeleteFolder();
+  const moveBoardToFolder = useMoveBoardToFolder();
+  const reorderBoard = useReorderBoard();
 
   const [boardOpen, setBoardOpen] = useState(false);
   const [boardName, setBoardName] = useState("");
@@ -42,6 +56,12 @@ function BoardsHome() {
   const [dupTarget, setDupTarget] = useState<any>(null);
   const [dupName, setDupName] = useState("");
   const [dupItems, setDupItems] = useState(false);
+  // Seções e edição do quadro rei
+  const [renameOpen, setRenameOpen] = useState<null | { type: "king" | "folder"; id: string; name: string }>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [newSectionOpen, setNewSectionOpen] = useState(false);
+  const [sectionName, setSectionName] = useState("");
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<any>(null);
 
   // A migração ainda não aplicada aparece como erro de tabela inexistente.
   const missingTables = error && /does not exist|schema cache/i.test(error.message);
@@ -63,13 +83,32 @@ function BoardsHome() {
     setBoardOpen(true);
   };
 
-  // Quadros ordenados: favoritos primeiro, depois por atualização recente.
-  const boards = [...(king?.boards ?? [])].sort((a: any, b: any) => {
-    const fa = favs.has(a.id) ? 0 : 1;
-    const fb = favs.has(b.id) ? 0 : 1;
-    if (fa !== fb) return fa - fb;
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  });
+  const allBoards = king?.boards ?? [];
+  const folders = king?.folders ?? [];
+  const byPosition = (a: any, b: any) => (a.position ?? 0) - (b.position ?? 0);
+  const boardsInFolder = (folderId: string | null) =>
+    allBoards.filter((b: any) => (b.folder_id ?? null) === folderId).sort(byPosition);
+
+  // Cada "seção" na tela: primeiro os quadros sem seção, depois as pastas.
+  const sections: { id: string | null; name: string; boards: any[] }[] = [
+    { id: null, name: "Sem seção", boards: boardsInFolder(null) },
+    ...folders.map((f: any) => ({ id: f.id, name: f.name, boards: boardsInFolder(f.id) })),
+  ];
+
+  const submitRename = () => {
+    if (!renameOpen || !renameValue.trim()) return;
+    if (renameOpen.type === "king") renameWorkspace.mutate({ workspaceId: renameOpen.id, name: renameValue.trim() });
+    else renameFolder.mutate({ folderId: renameOpen.id, name: renameValue.trim() });
+    setRenameOpen(null);
+  };
+  const move = (list: any[], index: number, dir: -1 | 1) => {
+    const other = index + dir;
+    if (other < 0 || other >= list.length) return;
+    reorderBoard.mutate({
+      a: { id: list[index].id, position: list[index].position ?? 0 },
+      b: { id: list[other].id, position: list[other].position ?? 0 },
+    });
+  };
 
   return (
     <div>
@@ -116,77 +155,83 @@ function BoardsHome() {
       {king && (
         <section>
           {/* Cabeçalho do quadro rei */}
-          <div className="mb-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 to-transparent p-4">
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 to-transparent p-4">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
               <Crown className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="font-display text-lg font-semibold">{king.name}</div>
+              <div className="flex items-center gap-2">
+                <span className="font-display text-lg font-semibold">{king.name}</span>
+                <button
+                  onClick={() => { setRenameOpen({ type: "king", id: king.id, name: king.name }); setRenameValue(king.name); }}
+                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  title="Editar nome do quadro rei"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <div className="text-xs text-muted-foreground">
-                {boards.length} quadro(s) · cada um visível só para seus responsáveis
+                {allBoards.length} quadro(s) · cada um visível só para seus responsáveis
               </div>
             </div>
-            <Button size="sm" variant="outline" className="h-9" onClick={openNewBoard}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />Quadro
+            <Button size="sm" variant="outline" className="h-9" onClick={() => { setSectionName(""); setNewSectionOpen(true); }}>
+              <FolderPlus className="mr-1.5 h-3.5 w-3.5" />Nova seção
             </Button>
           </div>
 
-          {boards.length === 0 ? (
+          {allBoards.length === 0 ? (
             <EmptyState
               icon={LayoutGrid}
               title="Nenhum quadro ainda"
-              description="Crie o primeiro quadro. Depois use o botão de Permissões para definir quem enxerga cada quadro."
+              description="Crie o primeiro quadro. Depois use o botão de Permissões para definir quem enxerga cada quadro, e organize em seções."
               action={<Button onClick={openNewBoard}><Plus className="mr-2 h-4 w-4" />Criar quadro</Button>}
             />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {boards.map((b: any) => {
-                const accent = b.color || "hsl(var(--primary))";
+            <div className="space-y-6">
+              {sections.map((sec) => {
+                if (sec.id === null && sec.boards.length === 0) return null; // não mostra "Sem seção" vazia
                 return (
-                  <div
-                    key={b.id}
-                    className="surface-card group relative overflow-hidden p-4 transition hover:-translate-y-0.5 hover:shadow-elegant"
-                    style={{ borderTop: `3px solid ${accent}` }}
-                  >
-                    <div className="absolute right-2 top-2 flex items-center gap-0.5">
-                      <button
-                        onClick={() => toggleFav(b.id)}
-                        className={favs.has(b.id) ? "p-1 text-amber-400" : "p-1 text-muted-foreground opacity-0 transition hover:text-amber-400 group-hover:opacity-100"}
-                        title={favs.has(b.id) ? "Remover dos favoritos" : "Favoritar"}
-                      >
-                        <Star className={"h-3.5 w-3.5 " + (favs.has(b.id) ? "fill-current" : "")} />
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="rounded p-1 text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100">
-                            <MoreVertical className="h-3.5 w-3.5" />
+                  <div key={sec.id ?? "none"}>
+                    <div className="mb-2 flex items-center gap-2">
+                      {sec.id ? <FolderOpen className="h-4 w-4 text-muted-foreground" /> : <LayoutGrid className="h-4 w-4 text-muted-foreground" />}
+                      <h3 className="font-display text-sm font-semibold">{sec.name}</h3>
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{sec.boards.length}</span>
+                      {sec.id && (
+                        <div className="ml-1 flex items-center gap-0.5">
+                          <button onClick={() => { setRenameOpen({ type: "folder", id: sec.id!, name: sec.name }); setRenameValue(sec.name); }} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Renomear seção">
+                            <Pencil className="h-3 w-3" />
                           </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setSettingsTarget(b)}>
-                            <Shield className="mr-2 h-3.5 w-3.5" />Permissões e aparência
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}>
-                            <Copy className="mr-2 h-3.5 w-3.5" />Duplicar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setArchiveTarget(b)}>
-                            <Archive className="mr-2 h-3.5 w-3.5" />Arquivar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          <button onClick={() => setDeleteFolderTarget(sec)} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive" title="Excluir seção">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <Link to="/tasks/$boardId" params={{ boardId: b.id }} className="block">
-                      <div className="flex items-center gap-2 pr-12">
-                        <span className="text-lg">{b.icon || "📋"}</span>
-                        <span className="truncate font-medium">{b.name}</span>
+                    {sec.boards.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-border/50 p-4 text-center text-xs text-muted-foreground">
+                        Seção vazia — mova quadros para cá pelo menu de cada quadro.
+                      </p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {sec.boards.map((b: any, i: number) => (
+                          <BoardCard
+                            key={b.id}
+                            b={b}
+                            fav={favs.has(b.id)}
+                            onToggleFav={() => toggleFav(b.id)}
+                            onSettings={() => setSettingsTarget(b)}
+                            onDuplicate={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}
+                            onArchive={() => setArchiveTarget(b)}
+                            folders={folders}
+                            onMoveToFolder={(folderId) => moveBoardToFolder.mutate({ boardId: b.id, folderId })}
+                            canUp={i > 0}
+                            canDown={i < sec.boards.length - 1}
+                            onUp={() => move(sec.boards, i, -1)}
+                            onDown={() => move(sec.boards, i, 1)}
+                          />
+                        ))}
                       </div>
-                      {b.description && <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{b.description}</p>}
-                      <div className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <Shield className="h-3 w-3" />
-                        Restrito aos responsáveis
-                        <span className="ml-auto">{new Date(b.updated_at).toLocaleDateString("pt-BR")}</span>
-                      </div>
-                    </Link>
+                    )}
                   </div>
                 );
               })}
@@ -205,6 +250,62 @@ function BoardsHome() {
           onOpenChange={(v) => { if (!v) setSettingsTarget(null); }}
         />
       )}
+
+      {/* Renomear (quadro rei ou seção) */}
+      <Dialog open={!!renameOpen} onOpenChange={(v) => !v && setRenameOpen(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>{renameOpen?.type === "king" ? "Editar quadro rei" : "Renomear seção"}</DialogTitle></DialogHeader>
+          <div>
+            <Label>Nome</Label>
+            <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitRename(); }} autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRenameOpen(null)}>Cancelar</Button>
+            <Button onClick={submitRename} disabled={!renameValue.trim()}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nova seção */}
+      <Dialog open={newSectionOpen} onOpenChange={setNewSectionOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nova seção</DialogTitle></DialogHeader>
+          <div>
+            <Label>Nome da seção</Label>
+            <Input
+              value={sectionName}
+              onChange={(e) => setSectionName(e.target.value)}
+              placeholder="Ex: Quadros dos Funcionários, Quadros da Elo…"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter" && sectionName.trim() && king) createFolder.mutate({ workspaceId: king.id, name: sectionName.trim() }, { onSuccess: () => setNewSectionOpen(false) }); }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setNewSectionOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => king && createFolder.mutate({ workspaceId: king.id, name: sectionName.trim() }, { onSuccess: () => setNewSectionOpen(false) })}
+              disabled={!sectionName.trim() || createFolder.isPending}
+            >
+              {createFolder.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar seção
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteFolderTarget} onOpenChange={(v) => !v && setDeleteFolderTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir a seção "{deleteFolderTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A seção é removida, mas os quadros dentro dela são mantidos — voltam para "Sem seção".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { deleteFolder.mutate(deleteFolderTarget.id); setDeleteFolderTarget(null); }}>Excluir seção</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Novo quadro */}
       <Dialog open={boardOpen} onOpenChange={setBoardOpen}>
@@ -289,6 +390,62 @@ function BoardsHome() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function BoardCard({ b, fav, onToggleFav, onSettings, onDuplicate, onArchive, folders, onMoveToFolder, canUp, canDown, onUp, onDown }: {
+  b: any; fav: boolean; onToggleFav: () => void; onSettings: () => void; onDuplicate: () => void; onArchive: () => void;
+  folders: any[]; onMoveToFolder: (folderId: string | null) => void;
+  canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void;
+}) {
+  const accent = b.color || "hsl(var(--primary))";
+  return (
+    <div className="surface-card group relative overflow-hidden p-4 transition hover:-translate-y-0.5 hover:shadow-elegant" style={{ borderTop: `3px solid ${accent}` }}>
+      <div className="absolute right-2 top-2 flex items-center gap-0.5">
+        <button
+          onClick={onToggleFav}
+          className={fav ? "p-1 text-amber-400" : "p-1 text-muted-foreground opacity-0 transition hover:text-amber-400 group-hover:opacity-100"}
+          title={fav ? "Remover dos favoritos" : "Favoritar"}
+        >
+          <Star className={"h-3.5 w-3.5 " + (fav ? "fill-current" : "")} />
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="rounded p-1 text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100">
+              <MoreVertical className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onSettings}><Shield className="mr-2 h-3.5 w-3.5" />Permissões e aparência</DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger><FolderInput className="mr-2 h-3.5 w-3.5" />Mover para seção</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => onMoveToFolder(null)}><LayoutGrid className="mr-2 h-3.5 w-3.5" />Sem seção</DropdownMenuItem>
+                {folders.map((f: any) => (
+                  <DropdownMenuItem key={f.id} onClick={() => onMoveToFolder(f.id)}><FolderOpen className="mr-2 h-3.5 w-3.5" />{f.name}</DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuItem disabled={!canUp} onClick={onUp}><ArrowUp className="mr-2 h-3.5 w-3.5" />Mover para cima</DropdownMenuItem>
+            <DropdownMenuItem disabled={!canDown} onClick={onDown}><ArrowDown className="mr-2 h-3.5 w-3.5" />Mover para baixo</DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate}><Copy className="mr-2 h-3.5 w-3.5" />Duplicar</DropdownMenuItem>
+            <DropdownMenuItem onClick={onArchive}><Archive className="mr-2 h-3.5 w-3.5" />Arquivar</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <Link to="/tasks/$boardId" params={{ boardId: b.id }} className="block">
+        <div className="flex items-center gap-2 pr-12">
+          <span className="text-lg">{b.icon || "📋"}</span>
+          <span className="truncate font-medium">{b.name}</span>
+        </div>
+        {b.description && <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{b.description}</p>}
+        <div className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Shield className="h-3 w-3" />
+          Restrito aos responsáveis
+          <span className="ml-auto">{new Date(b.updated_at).toLocaleDateString("pt-BR")}</span>
+        </div>
+      </Link>
     </div>
   );
 }

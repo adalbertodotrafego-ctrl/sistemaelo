@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { initials } from "@/lib/format";
-import { UserCog, Mail, Phone, Shield, ShieldCheck, UserX } from "lucide-react";
+import { UserCog, Mail, Phone, Shield, ShieldCheck, UserX, Clock, Check, X } from "lucide-react";
+import { notifyUsers } from "@/lib/notifications";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -89,6 +90,23 @@ function TeamPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Aprova o acesso de quem está pendente (conta criada mas ainda sem liberação).
+  const approve = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase.from("profiles").update({ approved: true } as any).eq("id", userId);
+      if (error) throw error;
+      await notifyUsers([userId], { kind: "success", title: "Acesso liberado! 🎉", body: "Sua conta na Elo foi aprovada — bem-vindo!", link: "/dashboard" });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["team"] }); toast.success("Acesso aprovado!"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Quem já está no sistema (aprovado) vs quem aguarda liberação.
+  // Se a coluna approved ainda não existir (migração pendente), trata como aprovado.
+  const isApproved = (m: any) => m.approved !== false;
+  const pending = (team ?? []).filter((m: any) => !isApproved(m));
+  const activeMembers = (team ?? []).filter((m: any) => isApproved(m));
+
   return (
     <div>
       <PageHeader
@@ -104,11 +122,41 @@ function TeamPage() {
         }
       />
 
-      {!team || team.length === 0 ? (
-        <EmptyState icon={UserCog} title="Sem colaboradores ainda" description="Os usuários aparecem aqui assim que se cadastram." />
+      {isAdmin && pending.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-400" />
+            <h2 className="font-display text-sm font-semibold">Solicitações de acesso</h2>
+            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">{pending.length}</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {pending.map((m: any) => (
+              <div key={m.id} className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-3">
+                <Avatar className="h-9 w-9">
+                  <AvatarImage src={m.avatar_url ?? undefined} />
+                  <AvatarFallback className="bg-amber-500/15 text-amber-300">{initials(m.full_name)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{m.full_name ?? "Sem nome"}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{m.email}</div>
+                </div>
+                <Button size="sm" className="h-8" onClick={() => approve.mutate(m.id)} disabled={approve.isPending}>
+                  <Check className="mr-1 h-3.5 w-3.5" />Aprovar
+                </Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => kick.mutate(m.id)} title="Recusar e remover">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!team || activeMembers.length === 0 ? (
+        <EmptyState icon={UserCog} title="Sem colaboradores ainda" description="Os usuários aparecem aqui assim que se cadastram e são aprovados." />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {team.map((m: any) => (
+          {activeMembers.map((m: any) => (
             <div key={m.id} className="surface-card p-5">
               <div className="flex items-start gap-3">
                 <Avatar className="h-12 w-12">

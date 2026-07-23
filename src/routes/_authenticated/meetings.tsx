@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Video, Plus, ExternalLink, MapPin, Calendar, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import {
+  Video, Plus, ExternalLink, MapPin, Calendar, MoreVertical, Pencil, Trash2,
+  CalendarDays, LayoutList, ChevronLeft, ChevronRight, Clock, Bell,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { notifyUsers } from "@/lib/notifications";
@@ -32,6 +35,29 @@ function toLocalInputValue(iso: string | null | undefined) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+function startOfWeek(d: Date) { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(0, 0, 0, 0); return x; }
+const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+// Contagem regressiva amigável até a reunião.
+function untilText(startAt: string): { text: string; soon: boolean; now: boolean } {
+  const diff = new Date(startAt).getTime() - Date.now();
+  const now = diff <= 0 && diff > -2 * 3600_000; // começou há até 2h → "agora"
+  const h = diff / 3600_000;
+  let text: string;
+  if (now) text = "Agora";
+  else if (h < 0) text = "";
+  else if (h < 1) text = `em ${Math.max(1, Math.round(diff / 60000))} min`;
+  else if (h < 24) text = `em ${Math.round(h)}h`;
+  else if (h < 48) text = "amanhã";
+  else text = `em ${Math.floor(h / 24)} dias`;
+  return { text, soon: h >= 0 && h <= 24, now };
+}
+
 function MeetingsPage() {
   const qc = useQueryClient();
   const { user } = useCurrentUser();
@@ -44,6 +70,8 @@ function MeetingsPage() {
   const [summary, setSummary] = useState("");
   const [summaryMentions, setSummaryMentions] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [anchor, setAnchor] = useState(new Date());
 
   const { data: meetings } = useQuery({
     queryKey: ["meetings"],
@@ -202,8 +230,64 @@ function MeetingsPage() {
         }
       />
 
+      {/* Aviso da próxima reunião */}
+      {(() => {
+        const upcoming = (meetings ?? [])
+          .filter((m: any) => m.events?.start_at && new Date(m.events.start_at).getTime() > Date.now() - 2 * 3600_000 && m.status !== "completed")
+          .sort((a: any, b: any) => new Date(a.events.start_at).getTime() - new Date(b.events.start_at).getTime());
+        const next = upcoming[0];
+        if (!next?.events?.start_at) return null;
+        const ev = next.events;
+        const u = untilText(ev.start_at);
+        return (
+          <button
+            onClick={() => { setActive(next); setSummary(next.summary ?? ""); }}
+            className={"mb-5 flex w-full items-center gap-3 rounded-xl border p-4 text-left transition hover:shadow-elegant " + (u.soon || u.now ? "border-amber-500/40 bg-amber-500/10" : "border-primary/20 bg-primary/5")}
+          >
+            <span className={"flex h-11 w-11 shrink-0 items-center justify-center rounded-xl " + (u.soon || u.now ? "bg-amber-500/15 text-amber-400" : "bg-primary/15 text-primary")}>
+              {u.now ? <Bell className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Próxima reunião {u.text && `· ${u.text}`}</div>
+              <div className="truncate font-display text-base font-semibold">{ev.title ?? "Reunião"}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {new Date(ev.start_at).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" })}
+                {next.clients?.name ? ` · ${next.clients.name}` : ""}
+              </div>
+            </div>
+            {ev.meet_link && (
+              <a href={ev.meet_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="hidden shrink-0 items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground sm:flex">
+                <ExternalLink className="h-3.5 w-3.5" />Entrar
+              </a>
+            )}
+          </button>
+        );
+      })()}
+
+      {/* Alternador de visão */}
+      <div className="mb-4 inline-flex rounded-lg border border-border/60 p-0.5">
+        {([["calendar", "Calendário", CalendarDays], ["list", "Lista", LayoutList]] as const).map(([v, label, Icon]) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={"flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition " + (view === v ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground")}
+          >
+            <Icon className="h-3.5 w-3.5" />{label}
+          </button>
+        ))}
+      </div>
+
       {(meetings?.length ?? 0) === 0 ? (
         <EmptyState icon={Video} title="Sem reuniões" description="Crie sua primeira reunião e mantenha as atas centralizadas." />
+      ) : view === "calendar" ? (
+        <MeetingsCalendar
+          meetings={meetings ?? []}
+          anchor={anchor}
+          onPrev={() => setAnchor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+          onNext={() => setAnchor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+          onToday={() => setAnchor(new Date())}
+          onOpen={(m) => { setActive(m); setSummary(m.summary ?? ""); }}
+        />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {meetings!.map((m: any) => (
@@ -297,6 +381,73 @@ function MeetingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function MeetingsCalendar({ meetings, anchor, onPrev, onNext, onToday, onOpen }: {
+  meetings: any[];
+  anchor: Date;
+  onPrev: () => void; onNext: () => void; onToday: () => void;
+  onOpen: (m: any) => void;
+}) {
+  const byDay = new Map<string, any[]>();
+  for (const m of meetings) {
+    if (!m.events?.start_at) continue;
+    const k = ymd(new Date(m.events.start_at));
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k)!.push(m);
+  }
+  const gridStart = startOfWeek(startOfMonth(anchor));
+  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  const todayK = ymd(new Date());
+  const month = anchor.getMonth();
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-1">
+        <span className="mr-2 font-display text-lg font-semibold capitalize">{MONTHS[anchor.getMonth()]} de {anchor.getFullYear()}</span>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onPrev}><ChevronLeft className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext}><ChevronRight className="h-4 w-4" /></Button>
+        <Button variant="outline" size="sm" className="ml-1 h-8" onClick={onToday}>Hoje</Button>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[720px]">
+          <div className="grid grid-cols-7 gap-1 pb-1">
+            {WEEKDAYS.map((w) => <div key={w} className="px-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{w}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((d) => {
+              const k = ymd(d);
+              const items = (byDay.get(k) ?? []).sort((a, b) => new Date(a.events.start_at).getTime() - new Date(b.events.start_at).getTime());
+              const isToday = k === todayK;
+              const dim = d.getMonth() !== month;
+              return (
+                <div key={k} className={"min-h-24 rounded-lg border p-1.5 " + (isToday ? "border-primary/50 bg-primary/5" : "border-border/50 bg-surface/30") + (dim ? " opacity-40" : "")}>
+                  <div className={"mb-1 text-[11px] font-medium " + (isToday ? "text-primary" : "text-muted-foreground")}>{d.getDate()}</div>
+                  <div className="space-y-1">
+                    {items.slice(0, 3).map((m) => {
+                      const done = m.status === "completed";
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => onOpen(m)}
+                          className={"flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] " + (done ? "bg-muted text-muted-foreground" : "bg-primary/15 text-primary")}
+                          title={m.events?.title}
+                        >
+                          <span className="shrink-0 tabular-nums">{new Date(m.events.start_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span className="truncate">{m.events?.title ?? "Reunião"}</span>
+                        </button>
+                      );
+                    })}
+                    {items.length > 3 && <div className="px-1 text-[9px] text-muted-foreground">+{items.length - 3} mais</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

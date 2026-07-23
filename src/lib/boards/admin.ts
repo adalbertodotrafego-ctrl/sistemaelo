@@ -37,6 +37,88 @@ export function useCreateWorkspace() {
   });
 }
 
+/** Renomeia a área de trabalho (o "quadro rei"). */
+export function useRenameWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { workspaceId: string; name: string }) => {
+      const { error } = await sb.from("workspaces").update({ name: args.name }).eq("id", args.workspaceId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
+// ── Seções (board_folders): organizam os quadros dentro da área ──────
+export function useCreateFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { workspaceId: string; name: string }) => {
+      const { error } = await sb.from("board_folders")
+        .insert({ workspace_id: args.workspaceId, name: args.name, position: nextPosition() });
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
+export function useRenameFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { folderId: string; name: string }) => {
+      const { error } = await sb.from("board_folders").update({ name: args.name }).eq("id", args.folderId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
+/** Exclui a seção — os quadros dentro voltam para "sem seção" (ON DELETE SET NULL). */
+export function useDeleteFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (folderId: string) => {
+      const { error } = await sb.from("board_folders").delete().eq("id", folderId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
+export function useMoveBoardToFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { boardId: string; folderId: string | null }) => {
+      const { error } = await sb.from("boards")
+        .update({ folder_id: args.folderId, position: nextPosition() }).eq("id", args.boardId);
+      if (error) throw new Error(error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
+/** Reordena um quadro trocando de posição com o vizinho (subir/descer). */
+export function useReorderBoard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { a: { id: string; position: number }; b: { id: string; position: number } }) => {
+      const [r1, r2] = await Promise.all([
+        sb.from("boards").update({ position: args.b.position }).eq("id", args.a.id),
+        sb.from("boards").update({ position: args.a.position }).eq("id", args.b.id),
+      ]);
+      if (r1.error) throw new Error(r1.error.message);
+      if (r2.error) throw new Error(r2.error.message);
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
 export function useCreateBoard() {
   const qc = useQueryClient();
   return useMutation({

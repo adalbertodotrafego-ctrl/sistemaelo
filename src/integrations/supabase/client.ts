@@ -96,6 +96,22 @@ export async function getSettledSession() {
   });
 }
 
+/**
+ * Estado de acesso do usuário logado: se é admin e se a conta foi aprovada.
+ * Admin sempre passa. Se a coluna `approved` ainda não existir no banco
+ * (migração não aplicada), trata como aprovado para não trancar ninguém.
+ */
+export async function getAccessState(userId: string): Promise<{ isAdmin: boolean; approved: boolean }> {
+  const [{ data: adminRow }, { data: prof, error }] = await Promise.all([
+    supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+    supabase.from("profiles").select("approved").eq("id", userId).maybeSingle(),
+  ]);
+  const isAdmin = !!adminRow;
+  if (error && /approved/.test(error.message)) return { isAdmin, approved: true };
+  const approved = (prof as any)?.approved ?? false;
+  return { isAdmin, approved: isAdmin || approved };
+}
+
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;
 
 // Import the supabase client like this:
