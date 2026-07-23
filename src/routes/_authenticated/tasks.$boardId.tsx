@@ -4,8 +4,6 @@ import { KanbanView } from "@/components/boards/kanban";
 import { BoardTopbar } from "@/components/boards/topbar";
 import { BoardGrid } from "@/components/boards/board-grid";
 import { ItemPanel } from "@/components/boards/item-panel";
-import { getColumnType } from "@/lib/boards/columns";
-import { BoardToolbar } from "@/components/boards/board-toolbar";
 import { useAddItem, useBoardData, useProfiles } from "@/lib/boards/queries";
 import type { Item } from "@/lib/boards/types";
 import { useBoardRealtime } from "@/lib/boards/realtime";
@@ -24,60 +22,20 @@ function BoardPage() {
   const [tab, setTab] = useState<"table" | "kanban">("table");
   const [search, setSearch] = useState("");
   const [openItemId, setOpenItemId] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const [filterPerson, setFilterPerson] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const live = useBoardRealtime(boardId);
 
-  // Busca (nome ou qualquer célula) + filtros de organização + ordenação.
+  // Busca por nome do item ou por qualquer célula (text_cache).
   const filteredItems = useMemo(() => {
     if (!data) return [];
     const q = search.trim().toLowerCase();
-    let list = data.items;
-
-    if (q) {
-      list = list.filter((it) => {
-        if (it.name.toLowerCase().includes(q)) return true;
-        const cells = data.cellMap[it.id];
-        if (!cells) return false;
-        return Object.values(cells).some((c) => c.text_cache?.toLowerCase().includes(q));
-      });
-    }
-
-    if (filterStatus) {
-      const [colId, idx] = filterStatus.split(":");
-      list = list.filter(
-        (it) => String((data.cellMap[it.id]?.[colId]?.value as { index?: number } | null)?.index) === idx,
-      );
-    }
-
-    if (filterPerson) {
-      const peopleCols = data.columns.filter((c) => c.type === "people").map((c) => c.id);
-      list = list.filter((it) =>
-        peopleCols.some((cid) =>
-          ((data.cellMap[it.id]?.[cid]?.value as { personsAndTeams?: { id: string }[] } | null)?.personsAndTeams ?? [])
-            .some((p) => p.id === filterPerson),
-        ),
-      );
-    }
-
-    if (sortBy) {
-      const col = data.columns.find((c) => c.id === sortBy);
-      if (col) {
-        const def = getColumnType(col.type);
-        const settings = (col.settings ?? {}) as Record<string, unknown>;
-        list = [...list].sort((a, b) => {
-          const va = data.cellMap[a.id]?.[col.id]?.value ?? null;
-          const vb = data.cellMap[b.id]?.[col.id]?.value ?? null;
-          const r = def.compare(va, vb, settings);
-          return sortDir === "asc" ? r : -r;
-        });
-      }
-    }
-
-    return list;
-  }, [data, search, filterStatus, filterPerson, sortBy, sortDir]);
+    if (!q) return data.items;
+    return data.items.filter((it) => {
+      if (it.name.toLowerCase().includes(q)) return true;
+      const cells = data.cellMap[it.id];
+      if (!cells) return false;
+      return Object.values(cells).some((c) => c.text_cache?.toLowerCase().includes(q));
+    });
+  }, [data, search]);
 
   if (isLoading) return <p className="px-2 py-10 text-sm text-muted-foreground">Carregando quadro…</p>;
   if (error) {
@@ -113,22 +71,6 @@ function BoardPage() {
           onNewItem={handleNewItem}
           live={live}
         />
-        {tab === "table" && (
-          <BoardToolbar
-            columns={data.columns}
-            profiles={profiles ?? []}
-            filterStatus={filterStatus}
-            onFilterStatus={setFilterStatus}
-            filterPerson={filterPerson}
-            onFilterPerson={setFilterPerson}
-            sortBy={sortBy}
-            onSortBy={setSortBy}
-            sortDir={sortDir}
-            onToggleSortDir={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-            resultCount={filteredItems.length}
-            totalCount={data.items.length}
-          />
-        )}
         <div className="min-h-0 flex-1 overflow-auto">
           {tab === "table" ? (
             <BoardGrid

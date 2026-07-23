@@ -82,39 +82,48 @@ export const getReporteiIndicators = createServerFn({ method: "POST" })
     const integrationsRes = await reportei(`/integrations?project_id=${data.reporteiProjectId}&per_page=100`);
     const integrations: any[] = (integrationsRes.data ?? []).filter((i: any) => i.status === "active");
 
-    const results: { label: string; value: string; platform: string; error?: string }[] = [];
+    // Um projeto do Reportei pode ter mais de uma conta do mesmo tipo (ex.: dois
+    // Facebook Ads de clientes distintos agrupados no mesmo projeto — caso real:
+    // "Metronorte Florianópolis" tem BR-101 e Ivo Silveira como contas separadas).
+    // Nesse caso, o nome da conta entra no rótulo pra não misturar os números.
+    const slugCounts = integrations.reduce<Record<string, number>>((acc, i) => {
+      acc[i.slug] = (acc[i.slug] ?? 0) + 1;
+      return acc;
+    }, {});
 
-    for (const integ of integrations) {
-      const catalog = REPORTEI_METRIC_CATALOG[integ.slug];
-      if (!catalog || catalog.length === 0) continue;
-      // Um projeto do Reportei pode ter mais de uma conta do mesmo tipo (ex.: dois
-      // Facebook Ads de clientes distintos agrupados no mesmo projeto — caso real:
-      // "Metronorte Florianópolis" tem BR-101 e Ivo Silveira como contas separadas).
-      // Nesse caso, o nome da conta entra no rótulo pra não misturar os números.
-      const sameSlugCount = integrations.filter((i) => i.slug === integ.slug).length;
-      const suffix = sameSlugCount > 1 ? ` — ${integ.name}` : "";
-      try {
-        const body = {
-          start: data.start,
-          end: data.end,
-          integration_id: integ.id,
-          metrics: catalog.map((m) => {
-            const { label, format, ...apiFields } = m;
-            return apiFields;
-          }),
-        };
-        const json = await reportei("/metrics/get-data", { method: "POST", body: JSON.stringify(body) });
-        // A API embrulha o resultado num campo "data" — {"data": {"fb_ads:spend": {...}}} —
-        // diferente do que uma ferramenta intermediária de teste tinha mostrado sem esse envelope.
-        for (const m of catalog) {
-          const raw = json?.data?.[m.reference_key]?.values;
-          if (raw === undefined || raw === null) continue;
-          results.push({ label: m.label + suffix, value: formatReporteiValue(raw, m.format), platform: integ.slug });
+    // Busca todas as plataformas EM PARALELO — antes era uma de cada vez, o que
+    // deixava a puxada lenta em projetos com muitas contas. Cada conta que falha
+    // reporta só o próprio erro, sem derrubar as demais.
+    const perIntegration = await Promise.all(
+      integrations.map(async (integ) => {
+        const catalog = REPORTEI_METRIC_CATALOG[integ.slug];
+        if (!catalog || catalog.length === 0) return [];
+        const suffix = (slugCounts[integ.slug] ?? 0) > 1 ? ` — ${integ.name}` : "";
+        try {
+          const body = {
+            start: data.start,
+            end: data.end,
+            integration_id: integ.id,
+            metrics: catalog.map((m) => {
+              const { label, format, ...apiFields } = m;
+              return apiFields;
+            }),
+          };
+          const json = await reportei("/metrics/get-data", { method: "POST", body: JSON.stringify(body) });
+          // A API embrulha o resultado num campo "data" — {"data": {"fb_ads:spend": {...}}}.
+          const out: { label: string; value: string; platform: string; account: string; error?: string }[] = [];
+          for (const m of catalog) {
+            const raw = json?.data?.[m.reference_key]?.values;
+            if (raw === undefined || raw === null) continue;
+            out.push({ label: m.label + suffix, value: formatReporteiValue(raw, m.format), platform: integ.slug, account: integ.name });
+          }
+          return out;
+        } catch (e: any) {
+          return [{ label: `${integ.name} (${integ.slug})`, value: "—", platform: integ.slug, account: integ.name, error: e?.message ?? "Falha ao consultar" }];
         }
-      } catch (e: any) {
-        results.push({ label: `${integ.name} (${integ.slug})`, value: "—", platform: integ.slug, error: e?.message ?? "Falha ao consultar" });
-      }
-    }
+      }),
+    );
 
+    const results = perIntegration.flat();
     return { connected: true, indicators: results, fetchedAt: new Date().toISOString(), start: data.start, end: data.end };
   });

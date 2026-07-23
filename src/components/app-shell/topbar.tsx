@@ -12,7 +12,6 @@ import { initials } from "@/lib/format";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/use-theme";
-import { MessagesButton } from "./messages";
 import { InviteButton } from "./invite";
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
@@ -82,8 +81,6 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       </button>
 
       <InviteButton />
-
-      <MessagesButton />
 
       <Link to="/notifications" className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
         <Bell className="h-5 w-5" />

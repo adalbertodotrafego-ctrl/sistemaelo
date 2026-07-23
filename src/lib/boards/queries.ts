@@ -37,7 +37,7 @@ export function useBoardsTree() {
         await sb
           .from("workspaces")
           .select(
-            "id, name, boards(id, name, kind, position, state, folder_id, updated_at), board_folders(id, name, parent_folder_id, position)",
+            "id, name, boards(id, name, kind, position, state, folder_id, updated_at, icon, color, description, owner_id), board_folders(id, name, parent_folder_id, position)",
           )
           .order("name")
           .order("position", { referencedTable: "boards" }),

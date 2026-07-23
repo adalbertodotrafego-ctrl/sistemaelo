@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, FolderPlus, Loader2, UserCheck, Copy,
+  Plus, LayoutGrid, MoreVertical, Star, Archive, AlertTriangle, Loader2, UserCheck, Copy, Crown, Shield,
 } from "lucide-react";
+import { BoardSettings } from "@/components/boards/board-settings";
 import { useBoardsTree, useMyItems } from "@/lib/boards/queries";
 import { useArchiveBoard, useCreateBoard, useCreateWorkspace, useDuplicateBoard } from "@/lib/boards/admin";
 import { useFavorites } from "@/lib/boards/workspace-state";
@@ -32,12 +33,11 @@ function BoardsHome() {
   const createBoard = useCreateBoard();
   const archiveBoard = useArchiveBoard();
 
-  const [wsOpen, setWsOpen] = useState(false);
-  const [wsName, setWsName] = useState("");
   const [boardOpen, setBoardOpen] = useState(false);
   const [boardName, setBoardName] = useState("");
   const [boardWs, setBoardWs] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<any>(null);
+  const [settingsTarget, setSettingsTarget] = useState<any>(null);
   const duplicateBoard = useDuplicateBoard();
   const [dupTarget, setDupTarget] = useState<any>(null);
   const [dupName, setDupName] = useState("");
@@ -46,11 +46,30 @@ function BoardsHome() {
   // A migração ainda não aplicada aparece como erro de tabela inexistente.
   const missingTables = error && /does not exist|schema cache/i.test(error.message);
 
-  const openNewBoard = (workspaceId: string) => {
-    setBoardWs(workspaceId);
+  // Modelo "quadro rei": há UMA área de trabalho (o Elo Marketing OS), que todo
+  // mundo vê; os quadros dentro dela é que são liberados por responsável. Se não
+  // existir nenhuma ainda, cria automaticamente — sem pedir pro usuário.
+  const king = tree?.[0] ?? null;
+  useEffect(() => {
+    if (!isLoading && !error && (tree?.length ?? 0) === 0 && !createWorkspace.isPending) {
+      createWorkspace.mutate({ name: "Elo Marketing OS" });
+    }
+  }, [isLoading, error, tree, createWorkspace]);
+
+  const openNewBoard = () => {
+    if (!king) return;
+    setBoardWs(king.id);
     setBoardName("");
     setBoardOpen(true);
   };
+
+  // Quadros ordenados: favoritos primeiro, depois por atualização recente.
+  const boards = [...(king?.boards ?? [])].sort((a: any, b: any) => {
+    const fa = favs.has(a.id) ? 0 : 1;
+    const fb = favs.has(b.id) ? 0 : 1;
+    if (fa !== fb) return fa - fb;
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
 
   return (
     <div>
@@ -58,13 +77,9 @@ function BoardsHome() {
         eyebrow="Operação"
         title="Tarefas"
         description="Quadros no estilo monday — colunas tipadas, grupos e colaboração ao vivo."
-        actions={
-          (tree?.length ?? 0) > 0 ? (
-            <Button onClick={() => openNewBoard(tree![0].id)}>
-              <Plus className="mr-2 h-4 w-4" />Novo quadro
-            </Button>
-          ) : undefined
-        }
+        actions={king ? (
+          <Button onClick={openNewBoard}><Plus className="mr-2 h-4 w-4" />Novo quadro</Button>
+        ) : undefined}
       />
 
       {missingTables && (
@@ -88,7 +103,9 @@ function BoardsHome() {
         <TabsContent value="mine" className="mt-0"><MyDemands /></TabsContent>
         <TabsContent value="boards" className="mt-0">
 
-      {isLoading && <p className="text-sm text-muted-foreground">Carregando quadros…</p>}
+      {(isLoading || (!error && (tree?.length ?? 0) === 0)) && (
+        <p className="text-sm text-muted-foreground">Carregando quadros…</p>
+      )}
 
       {error && !missingTables && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -96,108 +113,98 @@ function BoardsHome() {
         </div>
       )}
 
-      {!isLoading && !error && (tree?.length ?? 0) === 0 && (
-        <EmptyState
-          icon={LayoutGrid}
-          title="Nenhuma área de trabalho ainda"
-          description="Crie a primeira área de trabalho para começar a organizar os quadros da equipe."
-          action={
-            <Button onClick={() => { setWsName(""); setWsOpen(true); }}>
-              <FolderPlus className="mr-2 h-4 w-4" />Criar área de trabalho
-            </Button>
-          }
-        />
-      )}
-
-      {(tree ?? []).map((ws) => (
-        <section key={ws.id} className="mb-8">
-          <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-display text-sm font-bold text-primary">
-              {ws.name[0]?.toUpperCase()}
+      {king && (
+        <section>
+          {/* Cabeçalho do quadro rei */}
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 to-transparent p-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Crown className="h-5 w-5" />
             </span>
-            <h2 className="font-display text-lg font-semibold">{ws.name}</h2>
-            <Button size="sm" variant="outline" className="ml-auto h-8" onClick={() => openNewBoard(ws.id)}>
+            <div className="min-w-0 flex-1">
+              <div className="font-display text-lg font-semibold">{king.name}</div>
+              <div className="text-xs text-muted-foreground">
+                {boards.length} quadro(s) · cada um visível só para seus responsáveis
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="h-9" onClick={openNewBoard}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />Quadro
             </Button>
           </div>
 
-          {ws.boards.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
-              Nenhum quadro nesta área ainda.
-            </p>
+          {boards.length === 0 ? (
+            <EmptyState
+              icon={LayoutGrid}
+              title="Nenhum quadro ainda"
+              description="Crie o primeiro quadro. Depois use o botão de Permissões para definir quem enxerga cada quadro."
+              action={<Button onClick={openNewBoard}><Plus className="mr-2 h-4 w-4" />Criar quadro</Button>}
+            />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {ws.boards.map((b: any) => (
-                <div key={b.id} className="surface-card group relative p-4 transition hover:-translate-y-0.5 hover:shadow-elegant">
-                  <div className="absolute right-2 top-2 flex items-center gap-0.5">
-                    <button
-                      onClick={() => toggleFav(b.id)}
-                      className={favs.has(b.id) ? "p-1 text-amber-400" : "p-1 text-muted-foreground opacity-0 transition hover:text-amber-400 group-hover:opacity-100"}
-                      title={favs.has(b.id) ? "Remover dos favoritos" : "Favoritar"}
-                    >
-                      <Star className={"h-3.5 w-3.5 " + (favs.has(b.id) ? "fill-current" : "")} />
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="rounded p-1 text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100">
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}>
-                          <Copy className="mr-2 h-3.5 w-3.5" />Duplicar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setArchiveTarget(b)}>
-                          <Archive className="mr-2 h-3.5 w-3.5" />Arquivar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              {boards.map((b: any) => {
+                const accent = b.color || "hsl(var(--primary))";
+                return (
+                  <div
+                    key={b.id}
+                    className="surface-card group relative overflow-hidden p-4 transition hover:-translate-y-0.5 hover:shadow-elegant"
+                    style={{ borderTop: `3px solid ${accent}` }}
+                  >
+                    <div className="absolute right-2 top-2 flex items-center gap-0.5">
+                      <button
+                        onClick={() => toggleFav(b.id)}
+                        className={favs.has(b.id) ? "p-1 text-amber-400" : "p-1 text-muted-foreground opacity-0 transition hover:text-amber-400 group-hover:opacity-100"}
+                        title={favs.has(b.id) ? "Remover dos favoritos" : "Favoritar"}
+                      >
+                        <Star className={"h-3.5 w-3.5 " + (favs.has(b.id) ? "fill-current" : "")} />
+                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="rounded p-1 text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setSettingsTarget(b)}>
+                            <Shield className="mr-2 h-3.5 w-3.5" />Permissões e aparência
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}>
+                            <Copy className="mr-2 h-3.5 w-3.5" />Duplicar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setArchiveTarget(b)}>
+                            <Archive className="mr-2 h-3.5 w-3.5" />Arquivar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <Link to="/tasks/$boardId" params={{ boardId: b.id }} className="block">
+                      <div className="flex items-center gap-2 pr-12">
+                        <span className="text-lg">{b.icon || "📋"}</span>
+                        <span className="truncate font-medium">{b.name}</span>
+                      </div>
+                      {b.description && <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{b.description}</p>}
+                      <div className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Shield className="h-3 w-3" />
+                        Restrito aos responsáveis
+                        <span className="ml-auto">{new Date(b.updated_at).toLocaleDateString("pt-BR")}</span>
+                      </div>
+                    </Link>
                   </div>
-                  <Link to="/tasks/$boardId" params={{ boardId: b.id }} className="block">
-                    <div className="flex items-center gap-2 pr-12">
-                      <LayoutGrid className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">
-                        {b.kind === "private" ? "🔒 " : ""}{b.name}
-                      </span>
-                    </div>
-                    <div className="mt-3 text-[11px] text-muted-foreground">
-                      Atualizado em {new Date(b.updated_at).toLocaleDateString("pt-BR")}
-                    </div>
-                  </Link>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
-      ))}
+      )}
 
         </TabsContent>
       </Tabs>
 
-      {/* Nova área de trabalho */}
-      <Dialog open={wsOpen} onOpenChange={setWsOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Nova área de trabalho</DialogTitle></DialogHeader>
-          <div>
-            <Label>Nome</Label>
-            <Input
-              value={wsName}
-              onChange={(e) => setWsName(e.target.value)}
-              placeholder="Ex: Elo Marketing"
-              onKeyDown={(e) => { if (e.key === "Enter" && wsName.trim()) createWorkspace.mutate({ name: wsName.trim() }, { onSuccess: () => setWsOpen(false) }); }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setWsOpen(false)}>Cancelar</Button>
-            <Button
-              onClick={() => createWorkspace.mutate({ name: wsName.trim() }, { onSuccess: () => setWsOpen(false) })}
-              disabled={!wsName.trim() || createWorkspace.isPending}
-            >
-              {createWorkspace.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {settingsTarget && (
+        <BoardSettings
+          board={settingsTarget as any}
+          open={!!settingsTarget}
+          onOpenChange={(v) => { if (!v) setSettingsTarget(null); }}
+        />
+      )}
 
       {/* Novo quadro */}
       <Dialog open={boardOpen} onOpenChange={setBoardOpen}>
