@@ -119,19 +119,54 @@ export function useReorderBoard() {
   });
 }
 
+// Tipos de demanda que já vêm marcáveis na coluna "Tipo de demanda" de todo
+// quadro novo (múltipla escolha). Dá pra ajustar depois pelo editor da coluna.
+export const DEMAND_TYPES = [
+  "Post", "Reel", "Story", "Carrossel", "Vídeo", "Design / Arte", "Edição de vídeo",
+  "Copywriting", "Tráfego pago", "Gestão de redes", "Relatório", "Reunião",
+  "Site / Landing", "Planejamento", "E-mail marketing", "Outro",
+];
+
+// Colunas-padrão de um quadro novo, na ordem em que aparecem na tabela.
+function defaultColumns() {
+  const doneStatus = [
+    { index: 0, label: "A fazer", color: "#c4c4c4" },
+    { index: 1, label: "Fazendo", color: "#fdab3d" },
+    { index: 2, label: "Em revisão", color: "#a25ddc" },
+    { index: 3, label: "Concluído", color: "#00c875", done: true },
+  ];
+  return [
+    { title: "Tipo de demanda", type: "dropdown", settings: { options: DEMAND_TYPES.map((label, id) => ({ id, label })) } },
+    { title: "Status", type: "status", settings: { labels: doneStatus } },
+    { title: "Responsável", type: "people", settings: {} },
+    { title: "Prazo", type: "date", settings: {} },
+  ];
+}
+
 export function useCreateBoard() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { workspaceId: string; name: string }) => {
       const { data: auth } = await sb.auth.getUser();
-      const { error } = await sb.from("boards").insert({
+      const { data: board, error } = await sb.from("boards").insert({
         workspace_id: args.workspaceId,
         name: args.name,
         kind: "public",
         owner_id: auth.user?.id ?? null,
         position: nextPosition(),
-      });
+      }).select("id").single();
       if (error) throw new Error(error.message);
+
+      // Todo quadro nasce com um grupo e as colunas-padrão (incluindo a de
+      // Tipo de demanda como múltipla escolha), na mesma ordem, para os quadros
+      // ficarem consistentes e já prontos pra uso.
+      const boardId = board.id as string;
+      const [g, c] = await Promise.all([
+        sb.from("groups").insert({ board_id: boardId, title: "Demandas", color: "#579bfc", position: 1 }),
+        sb.from("columns").insert(defaultColumns().map((col, i) => ({ board_id: boardId, ...col, position: i + 1 }))),
+      ]);
+      if (g.error) throw new Error(g.error.message);
+      if (c.error) throw new Error(c.error.message);
     },
     onError: alertError,
     onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),

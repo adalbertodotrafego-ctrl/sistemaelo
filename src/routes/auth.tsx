@@ -25,6 +25,20 @@ function AuthPage() {
   const [invite, setInvite] = useState<{ id: string; note: string | null } | null>(null);
   const [inviteInvalid, setInviteInvalid] = useState(false);
 
+  // Se o retorno do Google/Supabase trouxe um erro na URL, mostra em vez de
+  // "travar" em silêncio — assim dá pra ver a causa (ex.: redirect_uri não
+  // liberado no Supabase) em vez de só voltar pra tela de login.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const errDesc = params.get("error_description") || hash.get("error_description") || params.get("error") || hash.get("error");
+    if (errDesc) {
+      toast.error(`Falha no login: ${decodeURIComponent(errDesc).replace(/\+/g, " ")}`);
+      // Limpa a URL para o erro não reaparecer a cada recarga.
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   // Chegou por link de convite (?convite=token): valida e já abre "solicitar acesso".
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("convite");

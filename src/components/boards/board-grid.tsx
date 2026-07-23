@@ -6,15 +6,15 @@ import {
   useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
 import { useEffect, useRef, useState } from "react";
-import { Palette, Repeat, Sparkles } from "lucide-react";
-import { NewDemandDialog } from "@/components/boards/new-demand-dialog";
+import { Palette, Repeat } from "lucide-react";
 import { Cell, MIN_COL_WIDTH, colWidth } from "@/components/boards/cell";
 import { StatusLabelsEditor } from "@/components/boards/status-editor";
+import { DropdownOptionsEditor } from "@/components/boards/dropdown-editor";
 import { ColorSwatches } from "@/components/boards/color-swatches";
 import { GROUP_COLORS } from "@/components/boards/colors";
 import {
   useCreateColumn, useCreateGroup, useDeleteColumn, useDeleteGroup, useRenameGroup,
-  useSetColumnWidth, useSetGroupColor, useSetStatusLabels,
+  useSetColumnWidth, useSetGroupColor, useSetStatusLabels, useUpdateColumnSettings,
 } from "@/lib/boards/admin";
 import { COLUMN_TYPE_LIST } from "@/lib/boards/columns";
 import { useAddItem, useMoveItem, useRenameItem, useSaveCell, useSetItemState } from "@/lib/boards/queries";
@@ -35,10 +35,17 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
   const moveItem = useMoveItem(boardId);
   const createGroup = useCreateGroup(boardId);
   const setStatusLabels = useSetStatusLabels(boardId);
+  const updateColumnSettings = useUpdateColumnSettings(boardId);
   const [dragging, setDragging] = useState<Item | null>(null);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [statusCol, setStatusCol] = useState<BoardColumn | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [dropdownCol, setDropdownCol] = useState<BoardColumn | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const openColumnEditor = (c: BoardColumn) => {
+    if (c.type === "dropdown") { setDropdownCol(c); setDropdownOpen(true); }
+    else { setStatusCol(c); setStatusOpen(true); }
+  };
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const itemsByGroup = new Map<string, Item[]>();
@@ -90,14 +97,13 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
         <HeaderRow
           boardId={boardId}
           columns={columns}
-          onEditStatus={(c) => { setStatusCol(c); setStatusOpen(true); }}
+          onEditStatus={openColumnEditor}
         />
 
         {groups.map((g) => (
           <GroupSection
             key={g.id} boardId={boardId} group={g} columns={columns}
             items={itemsByGroup.get(g.id) ?? []} cellMap={cellMap} profiles={profiles} onOpenItem={onOpenItem}
-            onEditStatus={(c) => { setStatusCol(c); setStatusOpen(true); }}
           />
         ))}
 
@@ -107,7 +113,6 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
             group={{ id: "__orphans", title: "Sem grupo", color: "#c4c4c4" } as Group}
             columns={columns} items={orphans} cellMap={cellMap} profiles={profiles}
             onOpenItem={onOpenItem}
-            onEditStatus={(c) => { setStatusCol(c); setStatusOpen(true); }}
             readOnlyGroup
           />
         )}
@@ -148,6 +153,13 @@ export function BoardGrid({ boardId, groups, columns, items, cellMap, profiles, 
         )}
       </DragOverlay>
 
+      <DropdownOptionsEditor
+        column={dropdownCol}
+        open={dropdownOpen}
+        onOpenChange={setDropdownOpen}
+        onSave={(columnId, settings) => updateColumnSettings.mutate({ columnId, settings })}
+      />
+
       <StatusLabelsEditor
         column={statusCol}
         groups={groups}
@@ -180,12 +192,12 @@ function HeaderRow({ boardId, columns, onEditStatus }: {
         >
           <span className="truncate">{c.title}</span>
           <div className="absolute right-1 top-1.5 hidden items-center gap-0.5 group-hover/col:flex">
-            {c.type === "status" && (
+            {(c.type === "status" || c.type === "dropdown") && (
               <button
                 type="button"
                 onClick={() => onEditStatus(c)}
                 className="rounded px-1 text-muted-foreground/60 hover:bg-accent hover:text-primary"
-                title="Editar status e cores"
+                title={c.type === "status" ? "Editar status e cores" : "Editar opções"}
               >
                 <Palette className="h-3 w-3" />
               </button>
@@ -296,10 +308,9 @@ function ResizeHandle({ width, onCommit }: { width: number; onCommit: (w: number
 }
 
 // ── Grupo ────────────────────────────────────────────────────────────
-function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpenItem, onEditStatus, readOnlyGroup }: {
+function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpenItem, readOnlyGroup }: {
   boardId: string; group: Group; columns: BoardColumn[]; items: Item[]; cellMap: CellMap;
-  profiles: Profile[]; onOpenItem: (item: Item) => void;
-  onEditStatus: (c: BoardColumn) => void; readOnlyGroup?: boolean;
+  profiles: Profile[]; onOpenItem: (item: Item) => void; readOnlyGroup?: boolean;
 }) {
   const renameGroup = useRenameGroup(boardId);
   const deleteGroup = useDeleteGroup(boardId);
@@ -402,10 +413,7 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
             <AddItemRow
               boardId={boardId}
               groupId={group.id}
-              groupTitle={group.title}
               nextPosition={(items.at(-1)?.position ?? 0) + 1}
-              columns={columns}
-              onEditStatus={onEditStatus}
             />
           )}
         </div>
@@ -534,13 +542,11 @@ function ItemName({ name, onRename }: { name: string; onRename: (name: string) =
   );
 }
 
-function AddItemRow({ boardId, groupId, groupTitle, nextPosition, columns, onEditStatus }: {
-  boardId: string; groupId: string; groupTitle: string; nextPosition: number;
-  columns: BoardColumn[]; onEditStatus: (c: BoardColumn) => void;
+function AddItemRow({ boardId, groupId, nextPosition }: {
+  boardId: string; groupId: string; nextPosition: number;
 }) {
   const addItem = useAddItem(boardId);
   const [value, setValue] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
 
   function commit() {
     const name = value.trim();
@@ -559,24 +565,6 @@ function AddItemRow({ boardId, groupId, groupTitle, nextPosition, columns, onEdi
         placeholder="+ Adicionar item"
         style={{ width: NAME_COL_WIDTH }}
         className="h-9 bg-transparent px-7 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:bg-card"
-      />
-      <button
-        type="button"
-        onClick={() => setDialogOpen(true)}
-        className="ml-1 flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-        title="Criar demanda com tipo e recorrência"
-      >
-        <Sparkles className="h-3 w-3" />Demanda
-      </button>
-      <NewDemandDialog
-        boardId={boardId}
-        groupId={groupId}
-        groupTitle={groupTitle}
-        nextPosition={nextPosition}
-        columns={columns}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onEditTypes={(c) => { setDialogOpen(false); onEditStatus(c); }}
       />
     </div>
   );
