@@ -10,8 +10,13 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { uploadImage } from "@/lib/storage";
-import { Upload, Loader2, ShieldOff, Shield, Users2, ArrowRight } from "lucide-react";
+import {
+  Upload, Loader2, Shield, Users2, ArrowRight, Sun, Moon, HelpCircle, ChevronDown,
+  Lock, Database, Globe, Instagram,
+} from "lucide-react";
 import { usePermissions, TOGGLEABLE_PAGES } from "@/hooks/use-permissions";
+import { useLang } from "@/hooks/use-language";
+import { useTheme } from "@/hooks/use-theme";
 import { RolesManager } from "@/components/roles-manager";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -21,26 +26,143 @@ export const Route = createFileRoute("/_authenticated/settings")({
 
 function SettingsPage() {
   const { isAdmin } = usePermissions();
+  const { t } = useLang();
 
   return (
     <div>
-      <PageHeader eyebrow="Conta" title="Configurações" description="Identidade, cargos, seções e equipe — tudo num só lugar." />
-      {!isAdmin ? (
-        <EmptyState icon={ShieldOff} title="Área restrita" description="Apenas administradores podem alterar as configurações do sistema." />
-      ) : (
-        <Tabs defaultValue="identity">
-          <TabsList className="mb-6 flex-wrap h-auto">
-            <TabsTrigger value="identity">Identidade</TabsTrigger>
-            <TabsTrigger value="roles">Cargos & Permissões</TabsTrigger>
-            <TabsTrigger value="sections">Seções do sistema</TabsTrigger>
-            <TabsTrigger value="team">Equipe</TabsTrigger>
-          </TabsList>
-          <TabsContent value="identity" className="mt-0"><IdentityTab /></TabsContent>
-          <TabsContent value="roles" className="mt-0"><RolesTab /></TabsContent>
-          <TabsContent value="sections" className="mt-0"><SectionsTab /></TabsContent>
-          <TabsContent value="team" className="mt-0"><TeamShortcutTab /></TabsContent>
-        </Tabs>
-      )}
+      <PageHeader eyebrow="Conta" title={t("settings.title")} description="Preferências, ajuda, privacidade e administração do sistema." />
+      <Tabs defaultValue="preferences">
+        <TabsList className="mb-6 h-auto flex-wrap">
+          <TabsTrigger value="preferences">{t("settings.preferences")}</TabsTrigger>
+          <TabsTrigger value="faq">{t("settings.faq")}</TabsTrigger>
+          <TabsTrigger value="privacy">{t("settings.privacy")}</TabsTrigger>
+          <TabsTrigger value="about">{t("settings.about")}</TabsTrigger>
+          {isAdmin && <TabsTrigger value="identity">Identidade</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="roles">Cargos & Permissões</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="sections">Seções do sistema</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="team">Equipe</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="preferences" className="mt-0"><PreferencesTab /></TabsContent>
+        <TabsContent value="faq" className="mt-0"><FaqTab /></TabsContent>
+        <TabsContent value="privacy" className="mt-0"><PrivacyTab /></TabsContent>
+        <TabsContent value="about" className="mt-0"><AboutTab /></TabsContent>
+        {isAdmin && <TabsContent value="identity" className="mt-0"><IdentityTab /></TabsContent>}
+        {isAdmin && <TabsContent value="roles" className="mt-0"><RolesTab /></TabsContent>}
+        {isAdmin && <TabsContent value="sections" className="mt-0"><SectionsTab /></TabsContent>}
+        {isAdmin && <TabsContent value="team" className="mt-0"><TeamShortcutTab /></TabsContent>}
+      </Tabs>
+
+      <SettingsFooter />
+    </div>
+  );
+}
+
+const ELO_SITE = "https://elomarketing.com.br";
+const ELO_INSTAGRAM = "https://www.instagram.com/elomarketing";
+
+function PreferencesTab() {
+  const { lang, setLang, t } = useLang();
+  const { theme, toggle } = useTheme();
+  return (
+    <div className="max-w-xl space-y-4">
+      <div className="surface-card flex items-center justify-between p-4">
+        <div>
+          <div className="text-sm font-medium">{t("settings.language")}</div>
+          <div className="text-xs text-muted-foreground">Idioma da interface (navegação e configurações).</div>
+        </div>
+        <div className="inline-flex rounded-lg border border-border/60 p-0.5">
+          {(["pt", "en"] as const).map((l) => (
+            <button key={l} onClick={() => setLang(l)}
+              className={"rounded-md px-3 py-1.5 text-xs font-medium transition " + (lang === l ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground")}>
+              {l === "pt" ? "🇧🇷 Português" : "🇺🇸 English"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="surface-card flex items-center justify-between p-4">
+        <div>
+          <div className="text-sm font-medium">{t("settings.theme")}</div>
+          <div className="text-xs text-muted-foreground">Alterne entre claro e escuro.</div>
+        </div>
+        <Button variant="outline" onClick={toggle}>
+          {theme === "dark" ? <><Sun className="mr-2 h-4 w-4" />Escuro</> : <><Moon className="mr-2 h-4 w-4" />Claro</>}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const FAQS = [
+  { q: "Como convido alguém para o sistema?", a: "No topo, clique no ícone de convite (👤+) e gere um link. Envie por WhatsApp ou e-mail — quem abrir cria a conta e um admin aprova na aba Equipe." },
+  { q: "Por que meu quadro de Tarefas não aparece para todo mundo?", a: "Cada quadro é visível só para seus responsáveis. Um admin define quem enxerga em cada quadro pelo botão de Permissões." },
+  { q: "Como funciona a verba de mídia nos Clientes?", a: "É a soma do orçamento diário das campanhas ativas (Meta + Google Ads), atualizada sozinha. Depende dos tokens configurados no servidor." },
+  { q: "Uma demanda recorrente sumiu, e agora?", a: "Ela volta a ficar pendente sozinha quando vira o período (dia/semana/mês) — basta abrir o quadro. O gatilho é marcar o status de conclusão." },
+  { q: "Como troco o idioma ou o tema?", a: "Aqui em Configurações → Preferências. O idioma cobre a navegação e as configurações; o resto é traduzido aos poucos." },
+];
+
+function FaqTab() {
+  const [open, setOpen] = useState<number | null>(0);
+  return (
+    <div className="max-w-2xl space-y-2">
+      {FAQS.map((f, i) => (
+        <div key={i} className="surface-card overflow-hidden">
+          <button onClick={() => setOpen(open === i ? null : i)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
+            <span className="flex items-center gap-2 text-sm font-medium"><HelpCircle className="h-4 w-4 shrink-0 text-primary" />{f.q}</span>
+            <ChevronDown className={"h-4 w-4 shrink-0 text-muted-foreground transition " + (open === i ? "rotate-180" : "")} />
+          </button>
+          {open === i && <div className="border-t border-border/60 px-4 pb-4 pt-3 text-sm text-muted-foreground">{f.a}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PrivacyTab() {
+  return (
+    <div className="surface-card max-w-2xl space-y-3 p-6 text-sm text-muted-foreground">
+      <h3 className="flex items-center gap-2 font-display text-base font-semibold text-foreground"><Lock className="h-4 w-4 text-primary" />Política de Privacidade</h3>
+      <p>O Elo Marketing OS é um sistema interno e privado da Elo Marketing. Os dados aqui registrados — clientes, campanhas, demandas, financeiro — são de uso exclusivo da agência e da sua equipe autorizada.</p>
+      <p><strong className="text-foreground">Acesso.</strong> Cada conta é aprovada por um administrador. O acesso a cada área respeita as permissões do seu cargo, e cada quadro de Tarefas é restrito aos seus responsáveis.</p>
+      <p><strong className="text-foreground">Dados de terceiros.</strong> Integrações (Meta Ads, Google Ads, Reportei, Google Calendar) usam tokens guardados no servidor, nunca no navegador, e servem apenas para exibir métricas dos clientes da agência.</p>
+      <p><strong className="text-foreground">Retenção.</strong> As informações permanecem enquanto o cliente/projeto estiver ativo. Exclusões feitas no sistema são permanentes.</p>
+      <p className="text-xs">Dúvidas sobre privacidade? Fale com um administrador da Elo.</p>
+    </div>
+  );
+}
+
+function AboutTab() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div className="surface-card space-y-3 p-6 text-sm text-muted-foreground">
+        <h3 className="flex items-center gap-2 font-display text-base font-semibold text-foreground"><Database className="h-4 w-4 text-primary" />Banco de dados</h3>
+        <p>Os dados ficam no <strong className="text-foreground">Supabase</strong> (PostgreSQL gerenciado), com segurança por linha (RLS) — cada pessoa só acessa o que tem permissão. As imagens ficam no Storage do próprio Supabase.</p>
+        <p>Atualizações em tempo real (CRM, Tarefas, Planejamento) usam o canal de Realtime do Supabase.</p>
+        <p className="text-xs">Backups e manutenção do banco são gerenciados pela infraestrutura do Supabase.</p>
+      </div>
+      <div className="surface-card space-y-2 p-6 text-sm text-muted-foreground">
+        <h3 className="font-display text-base font-semibold text-foreground">Sobre o Elo Marketing OS</h3>
+        <p>Sistema operacional interno da Elo Marketing: clientes, CRM, tarefas, campanhas, relatórios, eventos e financeiro num só lugar.</p>
+        <p className="text-xs">Criado por <strong className="text-foreground">Gabriel Tobar</strong>.</p>
+      </div>
+    </div>
+  );
+}
+
+function SettingsFooter() {
+  return (
+    <div className="mt-10 border-t border-border/60 pt-6">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="font-display text-lg font-bold tracking-tight">Elo Marketing<span className="text-primary"> OS</span></div>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button asChild variant="outline">
+            <a href={ELO_SITE} target="_blank" rel="noopener noreferrer"><Globe className="mr-2 h-4 w-4" />Site da Elo Marketing</a>
+          </Button>
+          <Button asChild>
+            <a href={ELO_INSTAGRAM} target="_blank" rel="noopener noreferrer"><Instagram className="mr-2 h-4 w-4" />Elo no Instagram</a>
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">© {new Date().getFullYear()} Elo Marketing OS · Todos os direitos reservados · Criado por Gabriel Tobar</p>
+      </div>
     </div>
   );
 }

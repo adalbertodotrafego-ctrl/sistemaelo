@@ -7,6 +7,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useLang } from "@/hooks/use-language";
+
+const GROUP_KEY: Record<string, string> = {
+  "Visão geral": "nav.overview", "Operação": "nav.operation", "Crescimento": "nav.growth", "Agência": "nav.agency",
+};
 
 const nav = [
   { group: "Visão geral", items: [
@@ -41,6 +46,7 @@ export function Sidebar({ mobileOpen, onMobileClose, collapsed = false, onToggle
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { can } = usePermissions();
+  const { t } = useLang();
   const filteredNav = nav
     .map((sec) => ({ ...sec, items: sec.items.filter((i) => can(i.key)) }))
     .filter((sec) => sec.items.length > 0);
@@ -68,7 +74,7 @@ export function Sidebar({ mobileOpen, onMobileClose, collapsed = false, onToggle
           <div key={section.group} className={cn(!mini && "rounded-xl border border-sidebar-border/60 bg-sidebar-accent/[0.04] p-2")}>
             {!mini && (
               <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                {section.group}
+                {t(GROUP_KEY[section.group] ?? section.group)}
               </div>
             )}
             <div className="space-y-1">
@@ -98,7 +104,7 @@ export function Sidebar({ mobileOpen, onMobileClose, collapsed = false, onToggle
                     >
                       <item.icon className="h-3.5 w-3.5" />
                     </span>
-                    {!mini && <span className="truncate">{item.label}</span>}
+                    {!mini && <span className="truncate">{t(item.label)}</span>}
                   </Link>
                 );
               })}
