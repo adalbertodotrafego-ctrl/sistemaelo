@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { initials } from "@/lib/format";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { LogOut, Upload, Loader2, Plus, Trash2 } from "lucide-react";
+import { LogOut, Upload, Loader2, Plus, Trash2, BadgeCheck, Clock, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { uploadImage } from "@/lib/storage";
 
@@ -97,8 +97,32 @@ function ProfilePage() {
               </button>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
             </div>
-            <div className="mt-4 font-display text-lg font-semibold">{form.full_name || "Sem nome"}</div>
+            <div className="mt-4 flex items-center gap-1.5 font-display text-lg font-semibold">
+              {form.full_name || "Sem nome"}
+              {(profile as any)?.approved && (
+                <span title="Perfil verificado pelo sistema"><BadgeCheck className="h-4 w-4 text-primary" /></span>
+              )}
+            </div>
             <div className="text-sm text-muted-foreground">{user?.email}</div>
+
+            <div className="mt-4 w-full space-y-2 border-t border-border/60 pt-4 text-left">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="h-3.5 w-3.5" />No sistema há</span>
+                <span className="font-medium">{tenure((profile as any)?.created_at)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" />Status</span>
+                {(profile as any)?.approved
+                  ? <span className="flex items-center gap-1 font-medium text-emerald-400"><BadgeCheck className="h-3.5 w-3.5" />Verificado</span>
+                  : <span className="font-medium text-amber-400">Aguardando aprovação</span>}
+              </div>
+              {(profile as any)?.created_at && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Membro desde</span>
+                  <span className="font-medium">{new Date((profile as any).created_at).toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}</span>
+                </div>
+              )}
+            </div>
           </div>
           <Button variant="destructive" className="mt-6 w-full" onClick={signOut}>
             <LogOut className="mr-2 h-4 w-4" /> Sair da conta
@@ -113,11 +137,21 @@ function ProfilePage() {
         </div>
       </div>
 
-      <div className="mt-6">
-        <TeamsSection />
-      </div>
     </div>
   );
+}
+
+// Tempo que a pessoa está no sistema, em texto amigável.
+function tenure(createdAt?: string | null): string {
+  if (!createdAt) return "—";
+  const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+  if (days < 1) return "hoje";
+  if (days < 30) return `${days} dia${days > 1 ? "s" : ""}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} ${months > 1 ? "meses" : "mês"}`;
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  return `${years} ano${years > 1 ? "s" : ""}${rem ? ` e ${rem} ${rem > 1 ? "meses" : "mês"}` : ""}`;
 }
 
 const emptyTeam = { name: "", description: "", color: "#2563EB" };
