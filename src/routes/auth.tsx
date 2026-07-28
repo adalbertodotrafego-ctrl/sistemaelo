@@ -57,7 +57,7 @@ function AuthPage() {
   // rota decide: aprovado vai pro dashboard, pendente vai pra /pending.
   useEffect(() => {
     let done = false;
-    const go = () => { if (done) return; done = true; navigate({ to: "/dashboard" }); };
+    const go = () => { if (done) return; done = true; navigate({ to: "/home" }); };
     getSettledSession().then((session) => { if (session) go(); });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => { if (session) go(); });
     return () => sub.subscription.unsubscribe();
@@ -69,7 +69,7 @@ function AuthPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return toast.error(error.message);
-    navigate({ to: "/dashboard" });
+    navigate({ to: "/home" });
   };
 
   const requestAccess = async (e: React.FormEvent) => {

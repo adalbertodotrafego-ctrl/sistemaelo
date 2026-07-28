@@ -9,22 +9,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import {
   Users, FolderKanban, Wallet, Video, Megaphone,
   UserCog, Sparkles, ArrowUpRight, Calendar as CalendarIcon,
-  Kanban, LayoutGrid, BarChart3, CalendarClock, Target, FolderOpen, Wallet as WalletIcon,
 } from "lucide-react";
-
-// Atalhos para as áreas mais usadas (respeitam as permissões do usuário).
-const SHORTCUTS = [
-  { to: "/clients", label: "Clientes", icon: Users, key: "clients" },
-  { to: "/crm", label: "CRM", icon: Kanban, key: "crm" },
-  { to: "/tasks", label: "Tarefas", icon: LayoutGrid, key: "tasks" },
-  { to: "/events", label: "Eventos", icon: CalendarClock, key: "events" },
-  { to: "/marketing", label: "Meta Ads", icon: Megaphone, key: "marketing" },
-  { to: "/reports", label: "Relatórios", icon: BarChart3, key: "reports" },
-  { to: "/goals", label: "Metas", icon: Target, key: "goals" },
-  { to: "/finance", label: "Financeiro", icon: WalletIcon, key: "finance" },
-  { to: "/files", label: "Arquivos", icon: FolderOpen, key: "files" },
-  { to: "/news", label: "Novidades", icon: Sparkles, key: "news" },
-] as const;
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -149,25 +134,6 @@ function Dashboard() {
         {showCrm && <StatCard label="Leads em andamento" value={stats?.leads ?? "—"} icon={ArrowUpRight} accent="primary" />}
         {showMarketing && <StatCard label="Campanhas" value={stats?.campaigns ?? "—"} icon={Megaphone} accent="primary" />}
         {isAdmin && <StatCard label="Equipe" value={stats?.team ?? "—"} icon={UserCog} accent="primary" />}
-      </div>
-
-      {/* Atalhos rápidos */}
-      <div>
-        <div className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Atalhos</div>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          {SHORTCUTS.filter((s) => isAdmin || can(s.key)).map((s) => (
-            <Link
-              key={s.to}
-              to={s.to}
-              className="surface-card group flex flex-col items-center justify-center gap-2 p-4 text-center transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-elegant"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition group-hover:bg-primary/20">
-                <s.icon className="h-5 w-5" />
-              </span>
-              <span className="text-xs font-medium">{s.label}</span>
-            </Link>
-          ))}
-        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

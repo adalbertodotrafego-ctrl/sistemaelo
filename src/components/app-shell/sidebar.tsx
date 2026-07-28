@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  LayoutDashboard, Users, Kanban, LayoutGrid, CalendarClock, Sparkles,
+  LayoutDashboard, Users, Kanban, LayoutGrid, CalendarClock, Home as HomeIcon,
   UserCog, Wallet, Megaphone, BarChart3, Target,
   FolderOpen, X, FileText, CalendarHeart, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
@@ -15,8 +15,8 @@ const GROUP_KEY: Record<string, string> = {
 
 const nav = [
   { group: "Visão geral", items: [
+    { to: "/home", icon: HomeIcon, label: "Home", key: "news" },
     { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", key: "dashboard" },
-    { to: "/news", icon: Sparkles, label: "Novidades", key: "news" },
   ]},
   { group: "Operação", items: [
     { to: "/clients", icon: Users, label: "Clientes", key: "clients" },

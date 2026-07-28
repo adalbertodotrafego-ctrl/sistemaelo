@@ -30,6 +30,7 @@ const DICT: Record<string, { pt: string; en: string }> = {
   "nav.growth": { pt: "Crescimento", en: "Growth" },
   "nav.agency": { pt: "Agência", en: "Agency" },
   // itens
+  "Home": { pt: "Home", en: "Home" },
   "Dashboard": { pt: "Dashboard", en: "Dashboard" },
   "Novidades": { pt: "Novidades", en: "What's new" },
   "Clientes": { pt: "Clientes", en: "Clients" },

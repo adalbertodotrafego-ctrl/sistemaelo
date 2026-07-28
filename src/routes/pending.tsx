@@ -23,7 +23,7 @@ function PendingPage() {
       if (!user) { navigate({ to: "/auth" }); return; }
       if (active) setEmail(user.email ?? null);
       const { approved } = await getAccessState(user.id);
-      if (approved) { navigate({ to: "/dashboard" }); return; }
+      if (approved) { navigate({ to: "/home" }); return; }
       if (active) setChecking(false);
     };
     check();
