@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageHeader, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/boards/admin";
 import { useFavorites } from "@/lib/boards/workspace-state";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export const Route = createFileRoute("/_authenticated/tasks/")({
   head: () => ({ meta: [{ title: "Tarefas — Elo Marketing OS" }] }),
@@ -36,6 +37,8 @@ export const Route = createFileRoute("/_authenticated/tasks/")({
 
 function BoardsHome() {
   const { data: tree, isLoading, error } = useBoardsTree();
+  const { isAdmin } = usePermissions();
+  const navigate = useNavigate();
   const [favs, toggleFav] = useFavorites();
   const createWorkspace = useCreateWorkspace();
   const createBoard = useCreateBoard();
@@ -67,14 +70,26 @@ function BoardsHome() {
   const missingTables = error && /does not exist|schema cache/i.test(error.message);
 
   // Modelo "quadro rei": há UMA área de trabalho (o Elo Marketing OS), que todo
-  // mundo vê; os quadros dentro dela é que são liberados por responsável. Se não
-  // existir nenhuma ainda, cria automaticamente — sem pedir pro usuário.
+  // mundo vê; os quadros dentro dela é que são liberados por responsável.
   const king = tree?.[0] ?? null;
+
+  // Só ADMIN cria a área rei quando ainda não existe — antes qualquer usuário
+  // sem quadros criava uma área nova, gerando áreas duplicadas.
   useEffect(() => {
-    if (!isLoading && !error && (tree?.length ?? 0) === 0 && !createWorkspace.isPending) {
+    if (isAdmin && !isLoading && !error && (tree?.length ?? 0) === 0 && !createWorkspace.isPending) {
       createWorkspace.mutate({ name: "Elo Marketing OS" });
     }
-  }, [isLoading, error, tree, createWorkspace]);
+  }, [isAdmin, isLoading, error, tree, createWorkspace]);
+
+  // Se o usuário (não-admin) é responsável por exatamente UM quadro, vai direto
+  // pra ele — é o quadro dele. Com vários, mostra a lista.
+  useEffect(() => {
+    if (isAdmin || isLoading) return;
+    const boards = tree?.[0]?.boards ?? [];
+    if (boards.length === 1) {
+      navigate({ to: "/tasks/$boardId", params: { boardId: boards[0].id }, replace: true });
+    }
+  }, [isAdmin, isLoading, tree, navigate]);
 
   const openNewBoard = () => {
     if (!king) return;
@@ -116,7 +131,7 @@ function BoardsHome() {
         eyebrow="Operação"
         title="Tarefas"
         description="Quadros no estilo monday — colunas tipadas, grupos e colaboração ao vivo."
-        actions={king ? (
+        actions={king && isAdmin ? (
           <Button onClick={openNewBoard}><Plus className="mr-2 h-4 w-4" />Novo quadro</Button>
         ) : undefined}
       />
@@ -162,29 +177,35 @@ function BoardsHome() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-display text-lg font-semibold">{king.name}</span>
-                <button
-                  onClick={() => { setRenameOpen({ type: "king", id: king.id, name: king.name }); setRenameValue(king.name); }}
-                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                  title="Editar nome do quadro rei"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => { setRenameOpen({ type: "king", id: king.id, name: king.name }); setRenameValue(king.name); }}
+                    className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    title="Editar nome do quadro rei"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
               <div className="text-xs text-muted-foreground">
                 {allBoards.length} quadro(s) · cada um visível só para seus responsáveis
               </div>
             </div>
-            <Button size="sm" variant="outline" className="h-9" onClick={() => { setSectionName(""); setNewSectionOpen(true); }}>
-              <FolderPlus className="mr-1.5 h-3.5 w-3.5" />Nova seção
-            </Button>
+            {isAdmin && (
+              <Button size="sm" variant="outline" className="h-9" onClick={() => { setSectionName(""); setNewSectionOpen(true); }}>
+                <FolderPlus className="mr-1.5 h-3.5 w-3.5" />Nova seção
+              </Button>
+            )}
           </div>
 
           {allBoards.length === 0 ? (
             <EmptyState
               icon={LayoutGrid}
-              title="Nenhum quadro ainda"
-              description="Crie o primeiro quadro. Depois use o botão de Permissões para definir quem enxerga cada quadro, e organize em seções."
-              action={<Button onClick={openNewBoard}><Plus className="mr-2 h-4 w-4" />Criar quadro</Button>}
+              title={isAdmin ? "Nenhum quadro ainda" : "Você ainda não tem quadros"}
+              description={isAdmin
+                ? "Crie o primeiro quadro. Depois use o botão de Permissões para definir quem enxerga cada quadro, e organize em seções."
+                : "Peça a um administrador para te adicionar como responsável de um quadro — ele aparece aqui automaticamente."}
+              action={isAdmin ? <Button onClick={openNewBoard}><Plus className="mr-2 h-4 w-4" />Criar quadro</Button> : undefined}
             />
           ) : (
             <div className="space-y-6">
