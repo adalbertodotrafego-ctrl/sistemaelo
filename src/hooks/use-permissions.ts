@@ -4,6 +4,7 @@ import { useCurrentUser } from "./use-auth";
 
 export const ALL_PAGES = [
   { key: "dashboard", label: "Dashboard" },
+  { key: "news", label: "Novidades" },
   { key: "clients", label: "Clientes" },
   { key: "crm", label: "CRM" },
   { key: "tasks", label: "Tarefas" },
@@ -23,7 +24,7 @@ export const ALL_PAGES = [
 
 // Nunca podem ser desligadas globalmente — sem elas ninguém (nem admin)
 // conseguiria navegar de volta para religar o resto.
-const ALWAYS_ON_PAGES = new Set(["dashboard", "notifications", "profile", "settings"]);
+const ALWAYS_ON_PAGES = new Set(["dashboard", "news", "profile", "settings"]);
 export const TOGGLEABLE_PAGES = ALL_PAGES.filter((p) => !ALWAYS_ON_PAGES.has(p.key));
 
 export function usePermissions() {
