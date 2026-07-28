@@ -17,6 +17,8 @@ import { humanizeError, errorRefCode } from "../lib/error-friendly";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/hooks/use-theme";
+import { CursorGlow } from "@/components/ui-extras/cursor-glow";
+import { Splash } from "@/components/ui-extras/splash";
 
 function NotFoundComponent() {
   return (
@@ -189,6 +191,8 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <Splash />
+        <CursorGlow />
         <Outlet />
         <Toaster />
       </ThemeProvider>

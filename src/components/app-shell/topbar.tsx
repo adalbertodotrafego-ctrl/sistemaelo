@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Search, Menu, Bell, LogOut, User as UserIcon, Sun, Moon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Search, Menu, LogOut, User as UserIcon, Settings, Sun, Moon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { initials } from "@/lib/format";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/use-theme";
 import { InviteButton } from "./invite";
+import { NotificationsBell } from "./notifications-bell";
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const navigate = useNavigate();
@@ -27,19 +27,6 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       const { data } = await supabase.from("profiles").select("*").eq("id", user!.id).maybeSingle();
       return data;
     },
-  });
-
-  const { data: unread } = useQuery({
-    queryKey: ["notifications-unread", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .is("read_at", null);
-      return count ?? 0;
-    },
-    refetchInterval: 30000,
   });
 
   useEffect(() => {
@@ -82,12 +69,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
       <InviteButton />
 
-      <Link to="/notifications" className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
-        <Bell className="h-5 w-5" />
-        {!!unread && unread > 0 && (
-          <Badge className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full px-1 text-[9px]">{unread}</Badge>
-        )}
-      </Link>
+      <NotificationsBell />
 
       <DropdownMenu>
         <DropdownMenuTrigger className="outline-none">
@@ -107,6 +89,10 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
           <DropdownMenuItem onSelect={() => navigate({ to: "/profile" })}>
             <UserIcon className="mr-2 h-4 w-4" /> Meu perfil
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => navigate({ to: "/settings" })}>
+            <Settings className="mr-2 h-4 w-4" /> Configurações
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={signOut} className="text-destructive">
             <LogOut className="mr-2 h-4 w-4" /> Sair
           </DropdownMenuItem>

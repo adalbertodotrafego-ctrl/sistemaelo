@@ -637,12 +637,6 @@ function ClientReportsTab() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" onClick={() => openGenerate("weekly")}>
-          <CalendarRange className="mr-2 h-4 w-4" />Gerar semanal
-        </Button>
-        <Button variant="outline" onClick={() => openGenerate("monthly")}>
-          <CalendarRange className="mr-2 h-4 w-4" />Gerar mensal
-        </Button>
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyReportForm); setMetrics([]); } }}>
           <DialogTrigger asChild><Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Novo relatório</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">

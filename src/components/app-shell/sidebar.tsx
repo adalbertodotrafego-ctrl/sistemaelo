@@ -2,8 +2,8 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   LayoutDashboard, Users, Kanban, LayoutGrid, CalendarClock,
-  UserCog, Wallet, Megaphone, Video, FolderOpen, BarChart3, Target,
-  Bell, Settings, User as UserIcon, X, FileText, CalendarHeart,
+  UserCog, Wallet, Megaphone, BarChart3, Target,
+  FolderOpen, X, FileText, CalendarHeart, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -17,7 +17,6 @@ const nav = [
     { to: "/crm", icon: Kanban, label: "CRM", key: "crm" },
     { to: "/tasks", icon: LayoutGrid, label: "Tarefas", key: "tasks" },
     { to: "/events", icon: CalendarClock, label: "Eventos", key: "events" },
-    { to: "/meetings", icon: Video, label: "Reuniões", key: "meetings" },
   ]},
   { group: "Crescimento", items: [
     { to: "/marketing", icon: Megaphone, label: "Meta Ads", key: "marketing" },
@@ -31,35 +30,46 @@ const nav = [
     { to: "/contracts", icon: FileText, label: "Contratos", key: "contracts" },
     { to: "/files", icon: FolderOpen, label: "Arquivos", key: "files" },
   ]},
-  { group: "Conta", items: [
-    { to: "/notifications", icon: Bell, label: "Notificações", key: "notifications" },
-    { to: "/profile", icon: UserIcon, label: "Perfil", key: "profile" },
-    { to: "/settings", icon: Settings, label: "Configurações", key: "settings" },
-  ]},
 ] as const;
 
-export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobileClose: () => void }) {
+export function Sidebar({ mobileOpen, onMobileClose, collapsed = false, onToggleCollapsed }: {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { can } = usePermissions();
   const filteredNav = nav
     .map((sec) => ({ ...sec, items: sec.items.filter((i) => can(i.key)) }))
     .filter((sec) => sec.items.length > 0);
 
-  const content = (
+  const content = (mini: boolean) => (
     <div className="flex h-full flex-col">
-      <Link to="/dashboard" className="flex h-16 flex-col justify-center border-b border-sidebar-border px-5 leading-tight">
-        <div className="font-display text-base font-bold tracking-tight">
-          Elo Marketing<span className="text-primary"> OS</span>
-        </div>
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</div>
+      <Link
+        to="/dashboard"
+        className={cn("flex h-16 items-center border-b border-sidebar-border leading-tight", mini ? "justify-center px-2" : "px-5")}
+      >
+        {mini ? (
+          <span className="font-display text-lg font-bold tracking-tight text-primary">OS</span>
+        ) : (
+          <div className="flex flex-col justify-center">
+            <div className="font-display text-base font-bold tracking-tight">
+              Elo Marketing<span className="text-primary"> OS</span>
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Agência de Marketing</div>
+          </div>
+        )}
       </Link>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-5">
+      <nav className={cn("flex-1 overflow-y-auto py-5", mini ? "space-y-1 px-2" : "space-y-4 px-3")}>
         {filteredNav.map((section) => (
-          <div key={section.group} className="rounded-xl border border-sidebar-border/60 bg-sidebar-accent/[0.04] p-2">
-            <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              {section.group}
-            </div>
+          <div key={section.group} className={cn(!mini && "rounded-xl border border-sidebar-border/60 bg-sidebar-accent/[0.04] p-2")}>
+            {!mini && (
+              <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                {section.group}
+              </div>
+            )}
             <div className="space-y-1">
               {section.items.map((item) => {
                 const active = pathname === item.to || pathname.startsWith(item.to + "/");
@@ -68,8 +78,10 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
                     key={item.to}
                     to={item.to}
                     onClick={onMobileClose}
+                    title={mini ? item.label : undefined}
                     className={cn(
-                      "group flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-sm font-medium transition-all",
+                      "group flex items-center rounded-lg border text-sm font-medium transition-all",
+                      mini ? "justify-center p-2" : "gap-2.5 px-2.5 py-2",
                       active
                         ? "border-primary/30 bg-primary/10 text-primary"
                         : "border-transparent text-sidebar-foreground/80 hover:border-sidebar-border hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
@@ -85,7 +97,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
                     >
                       <item.icon className="h-3.5 w-3.5" />
                     </span>
-                    <span className="truncate">{item.label}</span>
+                    {!mini && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
               })}
@@ -93,13 +105,26 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
           </div>
         ))}
       </nav>
+
+      {onToggleCollapsed && (
+        <button
+          onClick={onToggleCollapsed}
+          title={mini ? "Expandir menu" : "Recolher menu"}
+          className={cn(
+            "hidden items-center gap-2 border-t border-sidebar-border px-4 py-3 text-xs text-muted-foreground transition hover:text-foreground lg:flex",
+            mini && "justify-center px-2",
+          )}
+        >
+          {mini ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" />Recolher</>}
+        </button>
+      )}
     </div>
   );
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-sidebar-border bg-sidebar lg:block">
-        {content}
+      <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-300 lg:block", collapsed ? "w-[68px]" : "w-64")}>
+        {content(collapsed)}
       </aside>
 
       <AnimatePresence>
@@ -118,7 +143,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
               <button onClick={onMobileClose} className="absolute right-3 top-4 rounded p-1 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
-              {content}
+              {content(false)}
             </motion.aside>
           </>
         )}
