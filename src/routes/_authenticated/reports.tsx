@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, StatCard, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
@@ -199,6 +199,9 @@ type Metric = { label: string; value: string };
 const emptyReportForm = { client_id: "", title: "", period_start: "", period_end: "", status: "draft", summary: "", notes: "" };
 const statusLabels: Record<string, string> = { draft: "Rascunho", final: "Finalizado" };
 
+// Pastas fixas de Relatórios (não dá pra criar/apagar — só organizar dentro delas).
+const FIXED_FOLDERS = ["Semanal", "Mensal", "Metronorte", "OffShox", "Zeekr"];
+
 const pad = (n: number) => String(n).padStart(2, "0");
 const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const MONTHS_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -284,6 +287,23 @@ function ClientReportsTab() {
     queryKey: ["report-folders"],
     queryFn: async () => (await (supabase as any).from("report_folders").select("*").order("created_at")).data ?? [],
   });
+
+  // As pastas de Relatórios são fixas — cria as que faltarem e já entra na primeira.
+  useEffect(() => {
+    if (!folders) return;
+    const missing = FIXED_FOLDERS.filter((name) => !folders.some((f: any) => f.name === name));
+    if (missing.length) {
+      (async () => {
+        await (supabase as any).from("report_folders").insert(missing.map((name) => ({ name, created_by: user?.id })));
+        qc.invalidateQueries({ queryKey: ["report-folders"] });
+      })();
+      return;
+    }
+    if (activeFolder === "all") {
+      const first = folders.find((f: any) => f.name === FIXED_FOLDERS[0]);
+      if (first) setActiveFolder(first.id);
+    }
+  }, [folders, activeFolder, user?.id, qc]);
 
   // Relatórios visíveis conforme a pasta selecionada no topo.
   const visibleReports = (reports ?? []).filter((r: any) =>
@@ -775,30 +795,21 @@ function ClientReportsTab() {
         </Dialog>
       </div>
 
-      {/* Barra de pastas */}
+      {/* Barra de pastas — fixas */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <FolderChip active={activeFolder === "all"} onClick={() => selectFolder("all")} label={`Todos (${reports?.length ?? 0})`} />
-        <FolderChip active={activeFolder === "none"} icon={Folder} onClick={() => selectFolder("none")} label={`Sem pasta (${countInFolder("none")})`} />
-        {(folders ?? []).map((f: any) => (
-          <div key={f.id} className="group/folder relative flex items-center">
+        {FIXED_FOLDERS.map((name) => {
+          const f = (folders ?? []).find((x: any) => x.name === name);
+          if (!f) return null;
+          return (
             <FolderChip
+              key={f.id}
               active={activeFolder === f.id}
               icon={Folder}
               onClick={() => selectFolder(f.id)}
-              label={`${f.name} (${countInFolder(f.id)})`}
+              label={`${name} (${countInFolder(f.id)})`}
             />
-            <button
-              onClick={() => setDeleteFolderTarget(f)}
-              title="Excluir pasta"
-              className="ml-1 rounded p-0.5 text-muted-foreground opacity-0 transition hover:text-destructive group-hover/folder:opacity-100"
-            >
-              <FolderX className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-        <Button variant="ghost" size="sm" className="h-8" onClick={() => setFolderDialogOpen(true)}>
-          <FolderPlus className="mr-1.5 h-4 w-4" />Nova pasta
-        </Button>
+          );
+        })}
       </div>
 
       {/* Barra de seleção em massa */}
@@ -835,7 +846,7 @@ function ClientReportsTab() {
       )}
 
       {visibleReports.length === 0 ? (
-        <EmptyState icon={FileBarChart} title={activeFolder === "all" ? "Nenhum relatório ainda" : "Pasta vazia"} description={activeFolder === "all" ? "Crie o primeiro relatório para um cliente — puxe os dados automaticamente ou gere semanal/mensal." : "Nenhum relatório nesta pasta. Mova relatórios para cá pelo menu de cada card."} />
+        <EmptyState icon={FileBarChart} title="Pasta vazia" description="Nenhum relatório nesta pasta. Crie um novo relatório ou mova um existente para cá pelo menu de cada card." />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {visibleReports.map((r: any) => {
