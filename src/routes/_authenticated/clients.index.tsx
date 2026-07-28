@@ -21,9 +21,27 @@ import {
 import { initials, brl } from "@/lib/format";
 import {
   Users, Plus, Search, Building2, MoreVertical, Pencil, Trash2, Upload, Loader2, X,
-  AlertTriangle, TrendingUp, CheckCircle2,
+  AlertTriangle, TrendingUp, CheckCircle2, Tag, GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+// Paleta das etiquetas de cliente (mesma linguagem visual do CRM).
+const LABEL_PALETTE = [
+  { key: "red", dot: "bg-red-500", chip: "bg-red-500/15 text-red-300 border-red-500/30" },
+  { key: "amber", dot: "bg-amber-500", chip: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  { key: "green", dot: "bg-emerald-500", chip: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  { key: "blue", dot: "bg-blue-500", chip: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
+  { key: "purple", dot: "bg-purple-500", chip: "bg-purple-500/15 text-purple-300 border-purple-500/30" },
+  { key: "pink", dot: "bg-pink-500", chip: "bg-pink-500/15 text-pink-300 border-pink-500/30" },
+  { key: "cyan", dot: "bg-cyan-500", chip: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+  { key: "slate", dot: "bg-slate-500", chip: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+];
+const paletteByKey = (k?: string) => LABEL_PALETTE.find((p) => p.key === k) ?? LABEL_PALETTE[3];
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => ({ meta: [{ title: "Clientes — Elo Marketing OS" }] }),
@@ -63,6 +81,11 @@ function ClientsPage() {
   const [form, setForm] = useState(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [formLabels, setFormLabels] = useState<string[]>([]);
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [newLabel, setNewLabel] = useState({ name: "", color: "blue" });
+  const [orderedIds, setOrderedIds] = useState<string[] | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
 
   const { data: clients, isLoading } = useQuery({
@@ -70,9 +93,30 @@ function ClientsPage() {
     queryFn: async () => {
       const { data, error } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      // Ordena pela posição manual (arrastar); cai pro created_at quando não há.
+      return [...(data ?? [])].sort((a: any, b: any) => {
+        const pa = a.position ?? new Date(a.created_at).getTime() / 1000;
+        const pb = b.position ?? new Date(b.created_at).getTime() / 1000;
+        return pa - pb;
+      });
     },
   });
+
+  // Etiquetas — tabela pode não existir ainda (migração): degrada sem quebrar.
+  const { data: labelsData } = useQuery({
+    queryKey: ["client-labels"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("client_labels").select("*").order("created_at");
+      if (error) {
+        if (/does not exist|schema cache/i.test(error.message)) return { rows: [] as any[], missing: true };
+        throw error;
+      }
+      return { rows: (data ?? []) as any[], missing: false };
+    },
+  });
+  const labels = labelsData?.rows ?? [];
+  const labelsReady = !(labelsData?.missing ?? false);
+  const labelById = (id: string) => labels.find((l: any) => l.id === id);
 
   // Verba (Meta + Google Ads) por cliente, atualizada sozinha em segundo plano —
   // sem precisar de F5 ou botão de atualizar.
@@ -87,6 +131,7 @@ function ClientsPage() {
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setFormLabels([]);
     setOpen(true);
   };
 
@@ -100,8 +145,11 @@ function ClientsPage() {
       status: c.status ?? "active",
       logo_url: c.logo_url ?? "",
     });
+    setFormLabels(Array.isArray(c.label_ids) ? c.label_ids : []);
     setOpen(true);
   };
+  const toggleFormLabel = (id: string) =>
+    setFormLabels((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const onPickLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -125,6 +173,7 @@ function ClientsPage() {
         ...form,
         monthly_value: form.monthly_value ? Number(form.monthly_value) : 0,
       } as any;
+      if (labelsReady) payload.label_ids = formLabels;
       const run = async (p: any) =>
         editingId
           ? (await supabase.from("clients").update(p).eq("id", editingId)).error
@@ -145,8 +194,39 @@ function ClientsPage() {
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
+      setFormLabels([]);
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  // ---- Etiquetas ----
+  const createLabel = useMutation({
+    mutationFn: async () => {
+      if (!newLabel.name.trim()) throw new Error("Dê um nome à etiqueta");
+      const { error } = await (supabase as any).from("client_labels").insert({ name: newLabel.name.trim(), color: newLabel.color });
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["client-labels"] }); setNewLabel({ name: "", color: "blue" }); toast.success("Etiqueta criada!"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteLabel = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).from("client_labels").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["client-labels"] }); qc.invalidateQueries({ queryKey: ["clients"] }); toast.success("Etiqueta excluída."); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // ---- Reordenar (arrastar) ----
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const persistOrder = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Regrava a posição de todos na nova ordem (espaçado de 10 em 10).
+      await Promise.all(ids.map((id, i) => supabase.from("clients").update({ position: (i + 1) * 10 } as any).eq("id", id)));
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["clients"] }),
   });
 
   const remove = useMutation({
@@ -163,9 +243,32 @@ function ClientsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const filtered = (clients ?? []).filter((c: any) =>
-    [c.name, c.company, c.email, c.segment].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()),
+  // Ordem exibida: aplica a reordenação otimista (durante o arrastar) sobre a lista do servidor.
+  const base = clients ?? [];
+  const ordered = orderedIds
+    ? [
+        ...orderedIds.map((id) => base.find((c: any) => c.id === id)).filter(Boolean),
+        ...base.filter((c: any) => !orderedIds.includes(c.id)), // recém-adicionados vão pro fim
+      ]
+    : base;
+  const term = search.trim().toLowerCase();
+  const filtered = ordered.filter((c: any) =>
+    (!term || [c.name, c.company, c.email, c.segment].filter(Boolean).join(" ").toLowerCase().includes(term)) &&
+    (!labelFilter || (c.label_ids ?? []).includes(labelFilter)),
   );
+  // Arrastar só faz sentido na visão completa (sem busca/filtro).
+  const canDrag = !term && !labelFilter;
+
+  const onDragEnd = (e: DragEndEvent) => {
+    if (!e.over || e.active.id === e.over.id) return;
+    const ids = filtered.map((c: any) => c.id);
+    const from = ids.indexOf(String(e.active.id));
+    const to = ids.indexOf(String(e.over.id));
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(ids, from, to);
+    setOrderedIds(next);
+    persistOrder.mutate(next);
+  };
 
   // Enquanto a migração da coluna logo_url não estiver aplicada no banco, o upload
   // de logo fica oculto — evita o usuário subir uma imagem que não seria salva.
@@ -183,7 +286,8 @@ function ClientsPage() {
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9 sm:w-64" placeholder="Buscar cliente…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
+            <Button variant="outline" onClick={() => setLabelsOpen(true)}><Tag className="mr-2 h-4 w-4" />Etiquetas</Button>
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setFormLabels([]); } }}>
               <DialogTrigger asChild>
                 <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Novo cliente</Button>
               </DialogTrigger>
@@ -240,6 +344,30 @@ function ClientsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {labelsReady && (
+                    <div className="sm:col-span-2">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <Label className="mb-0">Etiquetas</Label>
+                        <button type="button" onClick={() => setLabelsOpen(true)} className="text-[11px] text-primary hover:underline">Gerenciar</button>
+                      </div>
+                      {labels.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground">Nenhuma etiqueta — clique em "Gerenciar" para criar.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {labels.map((l: any) => {
+                            const p = paletteByKey(l.color);
+                            const on = formLabels.includes(l.id);
+                            return (
+                              <button key={l.id} type="button" onClick={() => toggleFormLabel(l.id)}
+                                className={"flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition " + (on ? p.chip : "border-border/60 text-muted-foreground hover:text-foreground")}>
+                                <span className={"h-2 w-2 rounded-full " + p.dot} />{l.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -258,6 +386,31 @@ function ClientsPage() {
         </div>
       )}
 
+      {(labels.length > 0 || canDrag) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {labels.map((l: any) => {
+            const p = paletteByKey(l.color);
+            const on = labelFilter === l.id;
+            return (
+              <button key={l.id} onClick={() => setLabelFilter(on ? null : l.id)}
+                className={"flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition " + (on ? p.chip : "border-border/60 text-muted-foreground hover:text-foreground")}>
+                <span className={"h-2 w-2 rounded-full " + p.dot} />{l.name}
+              </button>
+            );
+          })}
+          {labelFilter && (
+            <button onClick={() => setLabelFilter(null)} className="flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />Limpar
+            </button>
+          )}
+          {canDrag && (
+            <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+              <GripVertical className="h-3 w-3" />Arraste os cards para organizar
+            </span>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -272,86 +425,19 @@ function ClientsPage() {
           action={<Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Cadastrar cliente</Button>}
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c: any) => (
-            <div key={c.id} className="surface-card group relative p-5 transition-all hover:-translate-y-0.5 hover:shadow-elegant">
-              <div className="absolute right-3 top-3 z-10">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      className="rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                    <DropdownMenuItem onClick={() => openEdit(c)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setDeleteTarget(c)} className="text-destructive focus:text-destructive">
-                      <Trash2 className="mr-2 h-3.5 w-3.5" />Excluir
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <Link to="/clients/$id" params={{ id: c.id }} className="block">
-                <div className="flex items-start gap-3">
-                  <Avatar className="h-12 w-12">
-                    {c.logo_url && <AvatarImage src={c.logo_url} alt={c.company ?? c.name} className="object-cover" />}
-                    <AvatarFallback className="bg-primary/15 text-primary">{initials(c.company ?? c.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1 pr-6">
-                    <div className="truncate font-display text-base font-semibold">{c.company ?? c.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">{c.name}</div>
-                  </div>
-                  <Badge variant={c.status === "active" ? "default" : "secondary"} className="text-[10px]">{STATUS_LABELS[c.status]}</Badge>
-                </div>
-                <div className="mt-4 space-y-1.5 text-xs text-muted-foreground">
-                  {c.segment && <div className="flex items-center gap-1.5"><Building2 className="h-3 w-3" />{c.segment}</div>}
-                  {c.email && <div className="truncate">{c.email}</div>}
-                </div>
-                <div className="mt-4 flex items-end justify-between border-t border-border/60 pt-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Mensalidade</div>
-                    <div className="font-display text-lg font-semibold">{brl(c.monthly_value)}</div>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">{c.plan ?? "—"}</div>
-                </div>
-                {adBudgets && (() => {
-                  const budget = adBudgets.byClient?.[c.id] as ClientAdBudget | undefined;
-                  // Sem conta de anúncio vinculada (ou integração fora do ar) não é
-                  // "sem verba" — é só um cliente sem mídia paga monitorada.
-                  if (!budget) {
-                    return (
-                      <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
-                          <div className="font-display text-sm font-semibold text-muted-foreground">—</div>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          {(adBudgets as any).metaError ? "Integração indisponível" : "Sem conta de anúncios"}
-                        </span>
-                      </div>
-                    );
-                  }
-                  const status = budgetStatus(budget);
-                  return (
-                    <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
-                        <div className="font-display text-sm font-semibold">
-                          {budget.budgetDaily > 0 ? `${money(budget.budgetDaily, budget.currency)}/dia` : "—"}
-                        </div>
-                      </div>
-                      <Badge variant="outline" className={`gap-1 text-[10px] ${status.cls}`}>
-                        <status.Icon className="h-3 w-3" />{status.label}
-                      </Badge>
-                    </div>
-                  );
-                })()}
-              </Link>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={filtered.map((c: any) => c.id)} strategy={rectSortingStrategy}>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((c: any) => (
+                <ClientCard
+                  key={c.id} c={c} canDrag={canDrag} adBudgets={adBudgets}
+                  labels={(c.label_ids ?? []).map((id: string) => labelById(id)).filter(Boolean)}
+                  onEdit={() => openEdit(c)} onDelete={() => setDeleteTarget(c)}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
@@ -368,6 +454,132 @@ function ClientsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Gerenciar etiquetas */}
+      <Dialog open={labelsOpen} onOpenChange={setLabelsOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Etiquetas de clientes</DialogTitle></DialogHeader>
+          {!labelsReady ? (
+            <p className="text-sm text-muted-foreground">Aplique a migração <strong>20260724160000_news_and_client_labels.sql</strong> no Supabase para usar etiquetas.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-1.5">
+                {labels.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma etiqueta ainda.</p>}
+                {labels.map((l: any) => {
+                  const p = paletteByKey(l.color);
+                  return (
+                    <span key={l.id} className={"flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs " + p.chip}>
+                      <span className={"h-2 w-2 rounded-full " + p.dot} />{l.name}
+                      <button onClick={() => deleteLabel.mutate(l.id)} className="ml-0.5 opacity-60 hover:opacity-100"><X className="h-3 w-3" /></button>
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="space-y-2 rounded-lg border border-border/60 p-3">
+                <Label>Nova etiqueta</Label>
+                <div className="flex gap-2">
+                  <Input value={newLabel.name} onChange={(e) => setNewLabel({ ...newLabel, name: e.target.value })} placeholder="Ex: VIP, Mensal, Recorrente…" onKeyDown={(e) => { if (e.key === "Enter") createLabel.mutate(); }} />
+                  <Button onClick={() => createLabel.mutate()} disabled={!newLabel.name.trim() || createLabel.isPending}>Criar</Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {LABEL_PALETTE.map((p) => (
+                    <button key={p.key} onClick={() => setNewLabel({ ...newLabel, color: p.key })} title={p.key}
+                      className={"h-6 w-6 rounded-full " + p.dot + " transition " + (newLabel.color === p.key ? "ring-2 ring-offset-2 ring-offset-background ring-white/70" : "opacity-70 hover:opacity-100")} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter><Button variant="ghost" onClick={() => setLabelsOpen(false)}>Fechar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ClientCard({ c, canDrag, adBudgets, labels, onEdit, onDelete }: {
+  c: any; canDrag: boolean; adBudgets: any; labels: any[]; onEdit: () => void; onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id, disabled: !canDrag });
+  const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 20 : undefined };
+  const budget = adBudgets?.byClient?.[c.id] as ClientAdBudget | undefined;
+
+  return (
+    <div ref={setNodeRef} style={style} className={"surface-card group relative p-5 transition-all hover:-translate-y-0.5 hover:shadow-elegant " + (isDragging ? "opacity-60 shadow-elegant" : "")}>
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5">
+        {canDrag && (
+          <button {...attributes} {...listeners} onClick={(e) => e.preventDefault()} title="Arrastar" className="cursor-grab rounded p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 active:cursor-grabbing">
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); }} className="rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100">
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+            <DropdownMenuItem onClick={onEdit}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
+            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-3.5 w-3.5" />Excluir</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <Link to="/clients/$id" params={{ id: c.id }} className="block">
+        <div className="flex items-start gap-3">
+          <Avatar className="h-12 w-12">
+            {c.logo_url && <AvatarImage src={c.logo_url} alt={c.company ?? c.name} className="object-cover" />}
+            <AvatarFallback className="bg-primary/15 text-primary">{initials(c.company ?? c.name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1 pr-12">
+            <div className="truncate font-display text-base font-semibold">{c.company ?? c.name}</div>
+            <div className="truncate text-xs text-muted-foreground">{c.name}</div>
+          </div>
+          <Badge variant={c.status === "active" ? "default" : "secondary"} className="text-[10px]">{STATUS_LABELS[c.status]}</Badge>
+        </div>
+
+        {labels.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {labels.map((l: any) => {
+              const p = paletteByKey(l.color);
+              return <span key={l.id} className={"rounded-full border px-1.5 py-0 text-[9px] " + p.chip}>{l.name}</span>;
+            })}
+          </div>
+        )}
+
+        <div className="mt-4 space-y-1.5 text-xs text-muted-foreground">
+          {c.segment && <div className="flex items-center gap-1.5"><Building2 className="h-3 w-3" />{c.segment}</div>}
+          {c.email && <div className="truncate">{c.email}</div>}
+        </div>
+        <div className="mt-4 flex items-end justify-between border-t border-border/60 pt-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Mensalidade</div>
+            <div className="font-display text-lg font-semibold">{brl(c.monthly_value)}</div>
+          </div>
+          <div className="text-[10px] text-muted-foreground">{c.plan ?? "—"}</div>
+        </div>
+        {adBudgets && (!budget ? (
+          <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
+              <div className="font-display text-sm font-semibold text-muted-foreground">—</div>
+            </div>
+            <span className="text-[10px] text-muted-foreground">{adBudgets.metaError ? "Integração indisponível" : "Sem conta de anúncios"}</span>
+          </div>
+        ) : (() => {
+          const status = budgetStatus(budget);
+          return (
+            <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
+                <div className="font-display text-sm font-semibold">{budget.budgetDaily > 0 ? `${money(budget.budgetDaily, budget.currency)}/dia` : "—"}</div>
+              </div>
+              <Badge variant="outline" className={`gap-1 text-[10px] ${status.cls}`}>
+                <status.Icon className="h-3 w-3" />{status.label}
+              </Badge>
+            </div>
+          );
+        })())}
+      </Link>
     </div>
   );
 }
