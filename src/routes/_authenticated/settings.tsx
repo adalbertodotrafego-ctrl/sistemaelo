@@ -1,13 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, EmptyState } from "@/components/ui-extras/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { uploadImage } from "@/lib/storage";
 import {
@@ -31,29 +30,29 @@ function SettingsPage() {
   return (
     <div>
       <PageHeader eyebrow="Conta" title={t("settings.title")} description="Preferências, ajuda, privacidade e administração do sistema." />
-      <Tabs defaultValue="preferences">
-        <TabsList className="mb-6 h-auto flex-wrap">
-          <TabsTrigger value="preferences">{t("settings.preferences")}</TabsTrigger>
-          <TabsTrigger value="faq">{t("settings.faq")}</TabsTrigger>
-          <TabsTrigger value="privacy">{t("settings.privacy")}</TabsTrigger>
-          <TabsTrigger value="about">{t("settings.about")}</TabsTrigger>
-          {isAdmin && <TabsTrigger value="identity">Identidade</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="roles">Cargos & Permissões</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="sections">Seções do sistema</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="team">Equipe</TabsTrigger>}
-        </TabsList>
-        <TabsContent value="preferences" className="mt-0"><PreferencesTab /></TabsContent>
-        <TabsContent value="faq" className="mt-0"><FaqTab /></TabsContent>
-        <TabsContent value="privacy" className="mt-0"><PrivacyTab /></TabsContent>
-        <TabsContent value="about" className="mt-0"><AboutTab /></TabsContent>
-        {isAdmin && <TabsContent value="identity" className="mt-0"><IdentityTab /></TabsContent>}
-        {isAdmin && <TabsContent value="roles" className="mt-0"><RolesTab /></TabsContent>}
-        {isAdmin && <TabsContent value="sections" className="mt-0"><SectionsTab /></TabsContent>}
-        {isAdmin && <TabsContent value="team" className="mt-0"><TeamShortcutTab /></TabsContent>}
-      </Tabs>
+
+      <div className="space-y-10">
+        <Section title={t("settings.preferences")}><PreferencesTab /></Section>
+        <Section title={t("settings.faq")}><FaqTab /></Section>
+        <Section title={t("settings.privacy")}><PrivacyTab /></Section>
+        <Section title={t("settings.about")}><AboutTab /></Section>
+        {isAdmin && <Section title="Identidade da agência"><IdentityTab /></Section>}
+        {isAdmin && <Section title="Cargos & Permissões"><RolesTab /></Section>}
+        {isAdmin && <Section title="Seções do sistema"><SectionsTab /></Section>}
+        {isAdmin && <Section title="Equipe"><TeamShortcutTab /></Section>}
+      </div>
 
       <SettingsFooter />
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-4 border-b border-border/60 pb-2 font-display text-lg font-semibold">{title}</h2>
+      {children}
+    </section>
   );
 }
 

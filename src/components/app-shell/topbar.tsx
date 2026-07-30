@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Search, Menu, LogOut, User as UserIcon, Settings, Sun, Moon, Pin, PinOff } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Search, Menu, LogOut, User as UserIcon, Settings, Sun, Moon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -13,18 +13,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/use-theme";
 import { InviteButton } from "./invite";
 import { NotificationsBell } from "./notifications-bell";
-import { usePins } from "@/hooks/use-pins";
-import { pageMetaFor } from "@/lib/nav-meta";
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const navigate = useNavigate();
   const { user } = useCurrentUser();
   const { theme, toggle } = useTheme();
   const [q, setQ] = useState("");
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { isPinned, toggle: togglePin } = usePins();
-  const meta = pageMetaFor(pathname);
-  const pinned = meta ? isPinned(meta.path) : false;
 
   const { data: profile } = useQuery({
     queryKey: ["profile", user?.id],
@@ -68,17 +62,6 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         />
         <kbd className="absolute right-3 hidden rounded border border-border/60 bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:block">⌘K</kbd>
       </div>
-
-      {meta && (
-        <button
-          onClick={() => togglePin.mutate({ path: meta.path, label: meta.label, icon: meta.icon })}
-          className={"rounded-md p-2 hover:bg-accent " + (pinned ? "text-primary" : "text-muted-foreground hover:text-foreground")}
-          title={pinned ? "Desafixar esta página" : "Fixar esta página na Home"}
-          aria-label="Fixar página"
-        >
-          {pinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
-        </button>
-      )}
 
       <button onClick={toggle} className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Alternar tema">
         {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

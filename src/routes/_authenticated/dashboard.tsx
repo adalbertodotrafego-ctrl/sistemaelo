@@ -106,19 +106,12 @@ function Dashboard() {
     },
   });
 
-  const greet = () => {
-    const h = new Date().getHours();
-    if (h < 12) return "Bom dia";
-    if (h < 18) return "Boa tarde";
-    return "Boa noite";
-  };
-
   return (
     <div className="space-y-8">
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         <PageHeader
           eyebrow="Visão geral"
-          title={`${greet()}, ${user?.user_metadata?.full_name?.split(" ")[0] ?? "time"} 👋`}
+          title="Dashboard"
           description={isAdmin
             ? "Um panorama em tempo real da operação da Elo Marketing."
             : "Seus compromissos de hoje."}

@@ -14,12 +14,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Plus, Megaphone, Wrench, Rocket, Pin, MoreVertical, Trash2, Pencil, FlaskConical,
-  Sparkles, ArrowRight, Users as UsersIcon, ListChecks, Building2, X,
+  Sparkles, ArrowRight, Users as UsersIcon, ListChecks, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
-import { usePins } from "@/hooks/use-pins";
 import { iconByName } from "@/lib/nav-meta";
 import { useMyItems } from "@/lib/boards/queries";
 
@@ -41,7 +40,6 @@ function HomePage() {
   const qc = useQueryClient();
   const { user } = useCurrentUser();
   const { isAdmin, can } = usePermissions();
-  const { pins, toggle: togglePin } = usePins();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -158,35 +156,6 @@ function HomePage() {
         <MiniMetric icon={UsersIcon} label="Pessoas no sistema" value={metrics?.team ?? "—"} to="/team" accent="text-blue-300" />
         <MiniMetric icon={Building2} label="Clientes ativos" value={metrics?.clients ?? "—"} to="/clients" accent="text-emerald-300" />
       </div>
-
-      {/* Fixados do usuário */}
-      {pins.length > 0 && (
-        <div>
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <Pin className="h-3.5 w-3.5" />Fixados
-          </div>
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            {pins.map((p) => {
-              const Icon = iconByName(p.icon ?? undefined);
-              return (
-                <div key={p.id} className="group relative">
-                  <Link to={p.path} className="surface-card flex flex-col items-center justify-center gap-2 p-4 text-center transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-elegant">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span>
-                    <span className="truncate text-xs font-medium">{p.label}</span>
-                  </Link>
-                  <button
-                    onClick={() => togglePin.mutate({ path: p.path, label: p.label })}
-                    className="absolute -right-1.5 -top-1.5 hidden rounded-full border border-border bg-card p-1 text-muted-foreground hover:text-destructive group-hover:block"
-                    title="Desafixar"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Atalhos */}
       <div>
