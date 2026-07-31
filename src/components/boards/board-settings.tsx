@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check, Lock, Users } from "lucide-react";
+import { Check, Lock, Users, Loader2 } from "lucide-react";
 import { ColorSwatches } from "@/components/boards/color-swatches";
 import { BOARD_EMOJIS, GROUP_COLORS } from "@/components/boards/colors";
 import { BoardAvatar } from "@/components/boards/avatar";
-import { useBoardMembers, useToggleBoardMember, useUpdateBoard } from "@/lib/boards/admin";
+import { useBoardMembers, useToggleBoardMember, useUpdateBoard, useApplyDefaultColumns } from "@/lib/boards/admin";
 import { useProfiles } from "@/lib/boards/queries";
 import type { Board } from "@/lib/boards/types";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -24,6 +24,7 @@ export function BoardSettings({ board, open, onOpenChange }: {
 }) {
   const { isAdmin } = usePermissions();
   const updateBoard = useUpdateBoard(board.id);
+  const applyColumns = useApplyDefaultColumns(board.id);
   const { data: members } = useBoardMembers(board.id);
   const toggleMember = useToggleBoardMember(board.id);
   const { data: profiles } = useProfiles();
@@ -87,6 +88,20 @@ export function BoardSettings({ board, open, onOpenChange }: {
               }}
             />
           </div>
+
+          {isAdmin && (
+            <div className="rounded-lg border border-border/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium">Colunas padrão</div>
+                  <div className="text-[11px] text-muted-foreground">Clientes, Tipo de Demanda, Prazo, Status, Prioridade, Responsável, OBS, Recorrente e Frequência.</div>
+                </div>
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => applyColumns.mutate()} disabled={applyColumns.isPending}>
+                  {applyColumns.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Responsáveis = quem enxerga */}
           <div>

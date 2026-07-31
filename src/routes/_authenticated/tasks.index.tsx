@@ -24,8 +24,14 @@ import { useBoardsTree, useMyItems } from "@/lib/boards/queries";
 import {
   useArchiveBoard, useCreateBoard, useCreateWorkspace, useDuplicateBoard,
   useRenameWorkspace, useCreateFolder, useRenameFolder, useDeleteFolder,
-  useMoveBoardToFolder, useReorderBoard,
+  useMoveBoardToFolder, useReorderBoard, useReorderBoards,
 } from "@/lib/boards/admin";
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
 import { useFavorites } from "@/lib/boards/workspace-state";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -49,6 +55,8 @@ function BoardsHome() {
   const deleteFolder = useDeleteFolder();
   const moveBoardToFolder = useMoveBoardToFolder();
   const reorderBoard = useReorderBoard();
+  const reorderBoards = useReorderBoards();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const [boardOpen, setBoardOpen] = useState(false);
   const [boardName, setBoardName] = useState("");
@@ -233,25 +241,41 @@ function BoardsHome() {
                         Seção vazia — mova quadros para cá pelo menu de cada quadro.
                       </p>
                     ) : (
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {sec.boards.map((b: any, i: number) => (
-                          <BoardCard
-                            key={b.id}
-                            b={b}
-                            fav={favs.has(b.id)}
-                            onToggleFav={() => toggleFav(b.id)}
-                            onSettings={() => setSettingsTarget(b)}
-                            onDuplicate={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}
-                            onArchive={() => setArchiveTarget(b)}
-                            folders={folders}
-                            onMoveToFolder={(folderId) => moveBoardToFolder.mutate({ boardId: b.id, folderId })}
-                            canUp={i > 0}
-                            canDown={i < sec.boards.length - 1}
-                            onUp={() => move(sec.boards, i, -1)}
-                            onDown={() => move(sec.boards, i, 1)}
-                          />
-                        ))}
-                      </div>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(e: DragEndEvent) => {
+                          if (!isAdmin || !e.over || e.active.id === e.over.id) return;
+                          const ids = sec.boards.map((b: any) => b.id);
+                          const from = ids.indexOf(String(e.active.id));
+                          const to = ids.indexOf(String(e.over.id));
+                          if (from < 0 || to < 0) return;
+                          reorderBoards.mutate(arrayMove(ids, from, to));
+                        }}
+                      >
+                        <SortableContext items={sec.boards.map((b: any) => b.id)} strategy={rectSortingStrategy}>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {sec.boards.map((b: any, i: number) => (
+                              <BoardCard
+                                key={b.id}
+                                b={b}
+                                canDrag={isAdmin}
+                                fav={favs.has(b.id)}
+                                onToggleFav={() => toggleFav(b.id)}
+                                onSettings={() => setSettingsTarget(b)}
+                                onDuplicate={() => { setDupTarget(b); setDupName(`${b.name} (cópia)`); setDupItems(false); }}
+                                onArchive={() => setArchiveTarget(b)}
+                                folders={folders}
+                                onMoveToFolder={(folderId) => moveBoardToFolder.mutate({ boardId: b.id, folderId })}
+                                canUp={i > 0}
+                                canDown={i < sec.boards.length - 1}
+                                onUp={() => move(sec.boards, i, -1)}
+                                onDown={() => move(sec.boards, i, 1)}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
                     )}
                   </div>
                 );
@@ -415,15 +439,22 @@ function BoardsHome() {
   );
 }
 
-function BoardCard({ b, fav, onToggleFav, onSettings, onDuplicate, onArchive, folders, onMoveToFolder, canUp, canDown, onUp, onDown }: {
-  b: any; fav: boolean; onToggleFav: () => void; onSettings: () => void; onDuplicate: () => void; onArchive: () => void;
+function BoardCard({ b, canDrag, fav, onToggleFav, onSettings, onDuplicate, onArchive, folders, onMoveToFolder, canUp, canDown, onUp, onDown }: {
+  b: any; canDrag: boolean; fav: boolean; onToggleFav: () => void; onSettings: () => void; onDuplicate: () => void; onArchive: () => void;
   folders: any[]; onMoveToFolder: (folderId: string | null) => void;
   canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void;
 }) {
   const accent = b.color || "hsl(var(--primary))";
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: b.id, disabled: !canDrag });
+  const style = { transform: CSS.Transform.toString(transform), transition, borderTop: `3px solid ${accent}`, zIndex: isDragging ? 20 : undefined };
   return (
-    <div className="surface-card group relative overflow-hidden p-4 transition hover:-translate-y-0.5 hover:shadow-elegant" style={{ borderTop: `3px solid ${accent}` }}>
+    <div ref={setNodeRef} style={style} className={"surface-card group relative overflow-hidden p-4 transition hover:-translate-y-0.5 hover:shadow-elegant " + (isDragging ? "opacity-60 shadow-elegant" : "")}>
       <div className="absolute right-2 top-2 flex items-center gap-0.5">
+        {canDrag && (
+          <button {...attributes} {...listeners} onClick={(e) => e.preventDefault()} title="Arrastar para reorganizar" className="cursor-grab rounded p-1 text-muted-foreground opacity-0 transition hover:text-foreground group-hover:opacity-100 active:cursor-grabbing">
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           onClick={onToggleFav}
           className={fav ? "p-1 text-amber-400" : "p-1 text-muted-foreground opacity-0 transition hover:text-amber-400 group-hover:opacity-100"}

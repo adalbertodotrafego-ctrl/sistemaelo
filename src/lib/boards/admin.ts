@@ -102,6 +102,18 @@ export function useMoveBoardToFolder() {
   });
 }
 
+/** Reordena vários quadros de uma vez (arrastar) — regrava as posições na nova ordem. */
+export function useReorderBoards() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id, i) => sb.from("boards").update({ position: (i + 1) * 10 }).eq("id", id)));
+    },
+    onError: alertError,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["boards-tree"] }),
+  });
+}
+
 /** Reordena um quadro trocando de posição com o vizinho (subir/descer). */
 export function useReorderBoard() {
   const qc = useQueryClient();
@@ -127,20 +139,54 @@ export const DEMAND_TYPES = [
   "Site / Landing", "Planejamento", "E-mail marketing", "Outro",
 ];
 
-// Colunas-padrão de um quadro novo, na ordem em que aparecem na tabela.
-function defaultColumns() {
-  const doneStatus = [
+// Frequências da coluna "Frequência" (múltipla escolha).
+const FREQUENCIES = ["Diária", "Semanal", "Quinzenal", "Mensal"];
+
+// Colunas-padrão de um quadro novo, na ordem pedida pela Elo.
+// (Também usada pelo botão "Aplicar colunas padrão" em quadros existentes.)
+export function defaultColumns() {
+  const status = [
     { index: 0, label: "A fazer", color: "#c4c4c4" },
     { index: 1, label: "Fazendo", color: "#fdab3d" },
     { index: 2, label: "Em revisão", color: "#a25ddc" },
     { index: 3, label: "Concluído", color: "#00c875", done: true },
   ];
-  return [
-    { title: "Tipo de demanda", type: "dropdown", settings: { options: DEMAND_TYPES.map((label, id) => ({ id, label })) } },
-    { title: "Status", type: "status", settings: { labels: doneStatus } },
-    { title: "Responsável", type: "people", settings: {} },
-    { title: "Prazo", type: "date", settings: {} },
+  const priority = [
+    { index: 0, label: "Alta", color: "#e2445c" },
+    { index: 1, label: "Média", color: "#fdab3d" },
+    { index: 2, label: "Baixa", color: "#00c875" },
   ];
+  return [
+    { title: "Clientes", type: "client", settings: {} },
+    { title: "Tipo de Demanda", type: "dropdown", settings: { options: DEMAND_TYPES.map((label, id) => ({ id, label })) } },
+    { title: "Prazo", type: "date", settings: {} },
+    { title: "Status", type: "status", settings: { labels: status } },
+    { title: "Prioridade", type: "status", settings: { labels: priority } },
+    { title: "Responsável", type: "people", settings: {} },
+    { title: "OBS", type: "long_text", settings: {} },
+    { title: "Recorrente", type: "checkbox", settings: {} },
+    { title: "Frequência", type: "dropdown", settings: { options: FREQUENCIES.map((label, id) => ({ id, label })) } },
+  ];
+}
+
+/** Adiciona a um quadro EXISTENTE as colunas padrão que faltarem (por título). */
+export function useApplyDefaultColumns(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data: existing } = await sb.from("columns").select("title, position").eq("board_id", boardId);
+      const have = new Set((existing ?? []).map((c: any) => String(c.title).trim().toLowerCase()));
+      let pos = Math.max(0, ...(existing ?? []).map((c: any) => Number(c.position ?? 0)));
+      const missing = defaultColumns().filter((c) => !have.has(c.title.trim().toLowerCase()));
+      if (missing.length === 0) return 0;
+      const { error } = await sb.from("columns").insert(missing.map((c) => ({ board_id: boardId, ...c, position: ++pos })));
+      if (error) throw new Error(error.message);
+      return missing.length;
+    },
+    onError: alertError,
+    onSuccess: (n) => toast.success(n ? `${n} coluna(s) padrão adicionada(s).` : "O quadro já tem todas as colunas padrão."),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+  });
 }
 
 export function useCreateBoard() {
