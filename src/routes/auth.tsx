@@ -6,9 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import {
-  Loader2, PartyPopper, ArrowLeft, ShieldCheck, BarChart3, Users, Kanban, Sparkles,
-} from "lucide-react";
+import { Loader2, PartyPopper, ArrowLeft, ShieldCheck, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Entrar — Elo Marketing OS" }] }),
@@ -120,60 +118,42 @@ function AuthPage() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Painel de marca */}
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-primary/20 via-background to-background lg:flex lg:flex-col lg:justify-between lg:p-12">
-        <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute -left-20 top-10 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
-          <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
-        </div>
-        <div className="font-display text-2xl font-bold tracking-tight">
-          Elo Marketing<span className="text-primary"> OS</span>
-        </div>
-        <div>
-          <h1 className="font-display text-3xl font-bold leading-tight">
-            O sistema operacional<br />da agência, num lugar só.
-          </h1>
-          <p className="mt-3 max-w-sm text-sm text-muted-foreground">
-            Clientes, CRM, tarefas, campanhas, relatórios e eventos — tudo integrado e em tempo real.
-          </p>
-          <div className="mt-8 space-y-3">
-            {[
-              { icon: Users, text: "Clientes e CRM com pipeline ao vivo" },
-              { icon: Kanban, text: "Tarefas no estilo monday, por responsável" },
-              { icon: BarChart3, text: "Relatórios automáticos com dados reais" },
-            ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-3 text-sm">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <Icon className="h-4 w-4" />
-                </span>
-                {text}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5" />Acesso restrito à equipe da Elo
-        </div>
+    <div className="dark relative flex min-h-screen items-center justify-center overflow-hidden bg-[#07070a] px-4 py-12 text-foreground">
+      {/* Fundo aurora animado */}
+      <div className="pointer-events-none absolute inset-0">
+        <motion.div
+          animate={{ x: [0, 60, 0], y: [0, -40, 0], opacity: [0.35, 0.55, 0.35] }}
+          transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
+          className="absolute -left-32 top-0 h-[480px] w-[480px] rounded-full bg-primary/30 blur-[130px]"
+        />
+        <motion.div
+          animate={{ x: [0, -50, 0], y: [0, 50, 0], opacity: [0.2, 0.4, 0.2] }}
+          transition={{ duration: 15, ease: "easeInOut", repeat: Infinity }}
+          className="absolute -right-24 bottom-0 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-[130px]"
+        />
+        <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(hsl(var(--border))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border))_1px,transparent_1px)] [background-size:44px_44px]" />
       </div>
 
-      {/* Painel do formulário */}
-      <div className="relative flex items-center justify-center px-4 py-12">
-        <div className="pointer-events-none absolute inset-0 -z-10 lg:hidden">
-          <div className="absolute left-1/2 top-0 h-[400px] w-[600px] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
-        </div>
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-sm"
-        >
-          <div className="mb-8 lg:hidden">
-            <div className="font-display text-xl font-bold tracking-tight">
-              Elo Marketing<span className="text-primary"> OS</span>
-            </div>
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl shadow-black/50 backdrop-blur-2xl"
+      >
+        {/* Monograma + marca */}
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 font-display text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/30">
+            e
           </div>
+          <div className="font-display text-xl font-bold tracking-tight text-white">
+            Elo Marketing<span className="text-primary"> OS</span>
+          </div>
+          <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40">
+            <ShieldCheck className="h-3 w-3" />Acesso restrito
+          </div>
+        </div>
 
+        <div className="w-full">
           {invite && mode === "request" && (
             <div className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-4">
               <div className="flex items-center gap-2">
@@ -270,8 +250,8 @@ function AuthPage() {
               </Button>
             </>
           )}
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
