@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   LayoutDashboard, Users, Kanban, LayoutGrid, CalendarClock, Home as HomeIcon,
   UserCog, Wallet, Megaphone, BarChart3, Target,
-  FolderOpen, X, FileText, CalendarHeart, PanelLeftClose, PanelLeftOpen,
+  FolderOpen, X, FileText, CalendarHeart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -38,15 +39,14 @@ const nav = [
   ]},
 ] as const;
 
-export function Sidebar({ mobileOpen, onMobileClose, collapsed = false, onToggleCollapsed }: {
+export function Sidebar({ mobileOpen, onMobileClose }: {
   mobileOpen: boolean;
   onMobileClose: () => void;
-  collapsed?: boolean;
-  onToggleCollapsed?: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { can } = usePermissions();
   const { t } = useLang();
+  const [hovered, setHovered] = useState(false);
   const filteredNav = nav
     .map((sec) => ({ ...sec, items: sec.items.filter((i) => can(i.key)) }))
     .filter((sec) => sec.items.length > 0);
@@ -113,25 +113,20 @@ export function Sidebar({ mobileOpen, onMobileClose, collapsed = false, onToggle
         ))}
       </nav>
 
-      {onToggleCollapsed && (
-        <button
-          onClick={onToggleCollapsed}
-          title={mini ? "Expandir menu" : "Recolher menu"}
-          className={cn(
-            "hidden items-center gap-2 border-t border-sidebar-border px-4 py-3 text-xs text-muted-foreground transition hover:text-foreground lg:flex",
-            mini && "justify-center px-2",
-          )}
-        >
-          {mini ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" />Recolher</>}
-        </button>
-      )}
     </div>
   );
 
   return (
     <>
-      <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-300 lg:block", collapsed ? "w-[68px]" : "w-64")}>
-        {content(collapsed)}
+      <aside
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar shadow-xl shadow-black/20 transition-[width] duration-300 lg:block",
+          hovered ? "w-64" : "w-[72px]",
+        )}
+      >
+        {content(!hovered)}
       </aside>
 
       <AnimatePresence>
