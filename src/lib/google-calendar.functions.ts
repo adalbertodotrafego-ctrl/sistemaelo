@@ -84,8 +84,12 @@ export const beginGoogleCalendarConnect = createServerFn({ method: "POST" })
 
 // Step 2: the /google-calendar-callback page calls this with the ?code and ?state Google sent back.
 export const completeGoogleCalendarConnect = createServerFn({ method: "POST" })
-  .inputValidator((d: { code: string; state: string }) => d)
-  .handler(async ({ data }) => {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { code: string; state: string }) => {
+    if (!d?.code || !d?.state) throw new Error("Retorno do Google incompleto.");
+    return { code: String(d.code), state: String(d.state) };
+  })
+  .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: stateRow, error: stateErr } = await supabaseAdmin
       .from("google_oauth_states" as any)
@@ -93,6 +97,21 @@ export const completeGoogleCalendarConnect = createServerFn({ method: "POST" })
       .eq("state", data.state)
       .maybeSingle();
     if (stateErr || !stateRow) throw new Error("Sessão de conexão expirada. Tente conectar novamente.");
+
+    // O state é de quem começou a conexão: sem esta checagem, quem
+    // interceptasse o state plantava a própria agenda na conta de outro.
+    if ((stateRow as any).user_id !== context.userId) {
+      await supabaseAdmin.from("google_oauth_states" as any).delete().eq("state", data.state);
+      throw new Error("Esta conexão foi iniciada por outra conta.");
+    }
+
+    // State velho não vale: janela curta reduz o risco de reuso.
+    const startedAt = new Date((stateRow as any).created_at ?? 0).getTime();
+    if (!startedAt || Date.now() - startedAt > 15 * 60_000) {
+      await supabaseAdmin.from("google_oauth_states" as any).delete().eq("state", data.state);
+      throw new Error("Sessão de conexão expirada. Tente conectar novamente.");
+    }
+
     await supabaseAdmin.from("google_oauth_states" as any).delete().eq("state", data.state);
 
     const clientId = process.env.GOOGLE_CLIENT_ID;

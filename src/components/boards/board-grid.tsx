@@ -16,6 +16,7 @@ import {
   useCreateColumn, useCreateGroup, useDeleteColumn, useDeleteGroup, useRenameGroup,
   useSetColumnWidth, useSetGroupColor, useSetStatusLabels, useUpdateColumnSettings,
 } from "@/lib/boards/admin";
+import { useIncrementalList } from "@/hooks/use-incremental-list";
 import { COLUMN_TYPE_LIST } from "@/lib/boards/columns";
 import { useAddItem, useMoveItem, useRenameItem, useSaveCell, useSetItemState } from "@/lib/boards/queries";
 import { RECURRENCE_LABELS, type BoardColumn, type CellMap, type Group, type Item, type Profile } from "@/lib/boards/types";
@@ -319,6 +320,9 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
   const [renaming, setRenaming] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const { setNodeRef, isOver } = useDroppable({ id: `group:${group.id}` });
+  // Grupo com milhares de itens entra aos poucos: o DOM fica leve e a tela
+  // abre na hora, em vez de travar montando tudo de uma vez.
+  const { visible, hidden, hasMore, showMore, sentinelRef } = useIncrementalList(items);
 
   return (
     <section className="mt-6 first:mt-3">
@@ -403,13 +407,22 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
             ...(isOver ? { outline: "2px dashed var(--color-primary)", outlineOffset: -2 } : {}),
           }}
         >
-          {items.map((it) => (
+          {visible.map((it) => (
             <ItemRow
               key={it.id} boardId={boardId} item={it} columns={columns}
               cellMap={cellMap} profiles={profiles} onOpenItem={onOpenItem}
             />
           ))}
-          {!readOnlyGroup && (
+          {hasMore && (
+            <div ref={sentinelRef} className="flex items-center justify-center gap-3 px-3 py-3 text-xs text-muted-foreground">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+              carregando mais {hidden.toLocaleString("pt-BR")} {hidden === 1 ? "item" : "itens"}…
+              <button type="button" onClick={showMore} className="underline hover:text-foreground">
+                mostrar agora
+              </button>
+            </div>
+          )}
+          {!readOnlyGroup && !hasMore && (
             <AddItemRow
               boardId={boardId}
               groupId={group.id}

@@ -171,6 +171,38 @@ html.light {
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: oklch(0.5 0 0 / 20%); border-radius: 999px; }
   ::-webkit-scrollbar-thumb:hover { background: oklch(0.5 0 0 / 30%); }
+
+  /* Seleção de texto na cor da marca em vez do azul cru do sistema. */
+  ::selection { background: oklch(0.58 0.21 264 / 35%); color: var(--color-foreground); }
+
+  /* Navegação por teclado precisa de um anel visível. O `outline: none` que
+     vem dos resets deixava quem usa Tab sem saber onde está — e some junto
+     a possibilidade de operar o sistema sem mouse. Só aparece no foco por
+     teclado (`:focus-visible`), então o clique de mouse continua limpo. */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Campo desabilitado precisa parecer desabilitado. */
+  [disabled], [aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; }
+
+  /* Imagem quebrada não deve esticar o layout. */
+  img, svg, video { max-width: 100%; height: auto; }
+}
+
+/* Quem pediu menos movimento no sistema operacional recebe menos movimento:
+   o sistema tem splash animado, aurora no login e luz seguindo o mouse —
+   para quem tem sensibilidade vestibular isso passa de enfeite a mal-estar.
+   É também requisito de acessibilidade (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @utility surface-card {

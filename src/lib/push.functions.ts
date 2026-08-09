@@ -29,16 +29,39 @@ export const removePushSubscription = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Called by notifyUsers() right after it writes to the notifications table — requires the
-// caller to be logged in (same trust model as the "notif insert any" policy: any authenticated
-// user may notify any other user), but the target user list can be anyone, not just the caller.
+// Called by notifyUsers() right after it writes to the notifications table.
+// Qualquer pessoa do time pode avisar outra — mas a entrada é validada e
+// limitada: sem isso, uma conta comprometida disparava push com texto e link
+// arbitrários para o sistema inteiro (phishing dentro do próprio app).
+const MAX_TARGETS = 500;
+const MAX_TITLE = 120;
+const MAX_BODY = 400;
+
 export const sendPushToUsers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { userIds: string[]; title: string; body?: string; link?: string }) => d)
-  .handler(async ({ data }) => {
+  .inputValidator((d: { userIds: string[]; title: string; body?: string; link?: string }) => {
+    if (!Array.isArray(d?.userIds)) throw new Error("Lista de destinatários inválida");
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const userIds = [...new Set(d.userIds.filter((id) => typeof id === "string" && uuid.test(id)))];
+    if (userIds.length > MAX_TARGETS) throw new Error("Destinatários demais em um envio só");
+    // Link é sempre interno: bloqueia usar o push como isca para fora do app.
+    const link = typeof d.link === "string" && d.link.startsWith("/") && !d.link.startsWith("//") ? d.link : "/";
+    return {
+      userIds,
+      title: String(d?.title ?? "").slice(0, MAX_TITLE),
+      body: String(d?.body ?? "").slice(0, MAX_BODY),
+      link,
+    };
+  })
+  .handler(async ({ data, context }) => {
     const vapidPublic = process.env.VAPID_PUBLIC_KEY;
     const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
     if (!vapidPublic || !vapidPrivate || data.userIds.length === 0) return { sent: 0 };
+
+    // Só quem já faz parte do time dispara notificação.
+    // `is_approved` é nova e ainda não está no types.ts gerado do Supabase.
+    const { data: approved } = await (context.supabase as any).rpc("is_approved", { _user_id: context.userId });
+    if (!approved) throw new Error("Acesso ainda não aprovado");
 
     const webpush = await import("web-push");
     webpush.setVapidDetails("mailto:contato@elomarketing.com.br", vapidPublic, vapidPrivate);

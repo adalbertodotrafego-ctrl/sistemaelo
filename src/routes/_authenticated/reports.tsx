@@ -137,10 +137,10 @@ function OverviewTab() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={tasksByStatus}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" />
-                <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6,6,0,0]} />
+                <XAxis dataKey="name" fontSize={11} stroke="var(--color-muted-foreground)" />
+                <YAxis fontSize={11} stroke="var(--color-muted-foreground)" />
+                <Tooltip contentStyle={{ background: "var(--color-surface-2)", border: "1px solid var(--color-border)", borderRadius: 8 }} />
+                <Bar dataKey="value" fill="var(--color-primary)" radius={[6,6,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -154,7 +154,7 @@ function OverviewTab() {
                 <Pie data={investedByChannel} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
                   {investedByChannel.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={{ background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} formatter={(v: any) => brl(Number(v))} />
+                <Tooltip contentStyle={{ background: "var(--color-surface-2)", border: "1px solid var(--color-border)", borderRadius: 8 }} formatter={(v: any) => brl(Number(v))} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

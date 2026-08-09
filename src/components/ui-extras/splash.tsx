@@ -36,7 +36,10 @@ export function Splash() {
             <div className="relative flex h-24 w-24 items-center justify-center">
               <motion.span
                 className="absolute inset-0 rounded-full border-2 border-transparent"
-                style={{ borderTopColor: "hsl(var(--primary))", borderRightColor: "hsl(var(--primary) / 0.4)" }}
+                style={{
+                  borderTopColor: "var(--color-primary)",
+                  borderRightColor: "color-mix(in oklch, var(--color-primary) 40%, transparent)",
+                }}
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1.1, ease: "linear", repeat: Infinity }}
               />

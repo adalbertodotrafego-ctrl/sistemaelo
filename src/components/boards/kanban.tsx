@@ -7,6 +7,7 @@ import {
 } from "@dnd-kit/core";
 import { useMemo, useState } from "react";
 import { BoardAvatar } from "@/components/boards/avatar";
+import { useIncrementalList } from "@/hooks/use-incremental-list";
 import type { StatusLabel } from "@/lib/boards/column-types";
 import { useProfiles, useSaveCell } from "@/lib/boards/queries";
 import type { BoardColumn, CellMap, Group, Item } from "@/lib/boards/types";
@@ -113,6 +114,9 @@ function KanbanColumn({ id, title, color, items, groups, onOpenItem }: {
   id: string; title: string; color: string; items: Item[]; groups: Group[]; onOpenItem: (item: Item) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  // Uma coluna pode juntar milhares de cartões; entram aos poucos conforme
+  // a pessoa rola, senão montar o quadro trava o navegador.
+  const { visible, hidden, hasMore, sentinelRef } = useIncrementalList(items, 30);
   return (
     <div
       ref={setNodeRef}
@@ -123,9 +127,14 @@ function KanbanColumn({ id, title, color, items, groups, onOpenItem }: {
         {title} <span className="opacity-80">/ {items.length}</span>
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto p-2">
-        {items.map((it) => (
+        {visible.map((it) => (
           <KanbanCard key={it.id} item={it} groups={groups} onOpen={() => onOpenItem(it)} />
         ))}
+        {hasMore && (
+          <div ref={sentinelRef} className="py-2 text-center text-[11px] text-muted-foreground">
+            + {hidden.toLocaleString("pt-BR")}…
+          </div>
+        )}
       </div>
     </div>
   );

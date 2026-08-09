@@ -18,6 +18,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 import { initials, brl } from "@/lib/format";
 import {
   Users, Plus, Search, Building2, MoreVertical, Pencil, Trash2, Upload, Loader2, X,
@@ -75,6 +76,7 @@ function budgetStatus(budget: ClientAdBudget | undefined) {
 
 function ClientsPage() {
   const qc = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -432,7 +434,10 @@ function ClientsPage() {
                 <ClientCard
                   key={c.id} c={c} canDrag={canDrag} adBudgets={adBudgets}
                   labels={(c.label_ids ?? []).map((id: string) => labelById(id)).filter(Boolean)}
-                  onEdit={() => openEdit(c)} onDelete={() => setDeleteTarget(c)}
+                  onEdit={() => openEdit(c)}
+                  // Excluir cliente arrasta contratos, relatórios e anotações
+                  // junto (cascade no banco). É ação de admin.
+                  onDelete={isAdmin ? () => setDeleteTarget(c) : undefined}
                 />
               ))}
             </div>
@@ -498,7 +503,7 @@ function ClientsPage() {
 }
 
 function ClientCard({ c, canDrag, adBudgets, labels, onEdit, onDelete }: {
-  c: any; canDrag: boolean; adBudgets: any; labels: any[]; onEdit: () => void; onDelete: () => void;
+  c: any; canDrag: boolean; adBudgets: any; labels: any[]; onEdit: () => void; onDelete?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id, disabled: !canDrag });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 20 : undefined };
@@ -520,7 +525,9 @@ function ClientCard({ c, canDrag, adBudgets, labels, onEdit, onDelete }: {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
             <DropdownMenuItem onClick={onEdit}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
-            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-3.5 w-3.5" />Excluir</DropdownMenuItem>
+            {onDelete && (
+              <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-3.5 w-3.5" />Excluir</DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

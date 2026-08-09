@@ -3,6 +3,7 @@
 // =====================================================================
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { fetchAllRows, insertChunked } from "@/lib/supabase-paged";
 import { sb } from "./client";
 import { getColumnType } from "./columns";
 import type { StatusLabel } from "./column-types";
@@ -281,28 +282,35 @@ export function useDuplicateBoard() {
       }
 
       if (args.withItems) {
-        const { data: items, error: iErr } = await sb.from("items").select("*")
-          .eq("board_id", args.boardId).eq("state", "active").is("parent_item_id", null).order("position");
-        if (iErr) throw new Error(iErr.message);
-        if ((items ?? []).length) {
-          const { data: newItems, error } = await sb.from("items").insert(
-            (items as any[]).map((it) => ({
+        // Paginado: um quadro pode ter milhares de itens e o PostgREST corta
+        // a resposta em 1000 linhas sem avisar (a cópia saía pela metade).
+        const items = await fetchAllRows<any>((from, to) =>
+          sb.from("items").select("*").eq("board_id", args.boardId).eq("state", "active")
+            .is("parent_item_id", null).order("position").order("id").range(from, to),
+        );
+        if (items.length) {
+          // Posição sequencial na cópia: assim o pareamento antigo→novo é
+          // determinístico mesmo quando o original tem posições repetidas.
+          const newItems = await insertChunked(
+            (rows) => sb.from("items").insert(rows).select("id, position"),
+            items.map((it, i) => ({
               board_id: newBoardId,
               group_id: it.group_id ? (groupMap.get(it.group_id) ?? null) : null,
-              name: it.name, description: it.description, position: it.position,
+              name: it.name, description: it.description, position: i + 1,
               creator_id: auth.user?.id ?? null,
             })),
-          ).select("id, position");
-          if (error) throw new Error(error.message);
-          const sortedOld = [...(items as any[])].sort((a, b) => a.position - b.position);
-          const sortedNew = [...(newItems as any[])].sort((a, b) => a.position - b.position);
+          );
+          const sortedNew = [...newItems].sort((a, b) => a.position - b.position);
           const itemMap = new Map<string, string>();
-          sortedOld.forEach((it, i) => itemMap.set(it.id, sortedNew[i].id));
+          items.forEach((it, i) => { if (sortedNew[i]) itemMap.set(it.id, sortedNew[i].id); });
 
-          const { data: cells } = await sb.from("column_values")
-            .select("item_id, column_id, value, text_cache, items!inner(board_id)")
-            .eq("items.board_id", args.boardId);
-          const rows = (cells ?? [])
+          const cells = await fetchAllRows<any>((from, to) =>
+            sb.from("column_values")
+              .select("item_id, column_id, value, text_cache, items!inner(board_id)")
+              .eq("items.board_id", args.boardId)
+              .order("item_id").order("column_id").range(from, to),
+          );
+          const rows = cells
             .map((cv: any) => ({
               item_id: itemMap.get(cv.item_id),
               column_id: columnMap.get(cv.column_id),
@@ -311,8 +319,7 @@ export function useDuplicateBoard() {
             }))
             .filter((r: any) => r.item_id && r.column_id);
           if (rows.length) {
-            const { error: cErr } = await sb.from("column_values").insert(rows);
-            if (cErr) throw new Error(cErr.message);
+            await insertChunked((chunk) => sb.from("column_values").insert(chunk).select("id"), rows);
           }
         }
       }

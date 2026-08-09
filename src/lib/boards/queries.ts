@@ -7,6 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { notifyUsers } from "@/lib/notifications";
+import { fetchAllRows } from "@/lib/supabase-paged";
 import { sb } from "./client";
 import { isDueAgain } from "./recurrence";
 import type { Recurrence } from "./types";
@@ -72,25 +73,34 @@ export function useBoardData(boardId: string) {
   return useQuery({
     queryKey: ["board", boardId],
     queryFn: async (): Promise<BoardData> => {
+      // Itens e células são paginados: o PostgREST corta em 1000 linhas sem
+      // avisar, e quadro grande (o "Arquivo de Demandas" tem 2.656 itens e
+      // ~10 mil células) aparecia pela metade. Ordenação com desempate por
+      // id/column_id para as fatias não repetirem nem pularem linha.
       const [board, groups, columns, items, values] = await Promise.all([
         sb.from("boards").select("*").eq("id", boardId).single(),
         sb.from("groups").select("*").eq("board_id", boardId).order("position"),
         sb.from("columns").select("*").eq("board_id", boardId).order("position"),
-        sb.from("items").select("*").eq("board_id", boardId).eq("state", "active")
-          .is("parent_item_id", null).order("position"),
-        sb.from("column_values")
-          .select("item_id, column_id, value, text_cache, items!inner(board_id)")
-          .eq("items.board_id", boardId),
+        fetchAllRows<Item>((from, to) =>
+          sb.from("items").select("*").eq("board_id", boardId).eq("state", "active")
+            .is("parent_item_id", null).order("position").order("id").range(from, to),
+        ),
+        fetchAllRows<any>((from, to) =>
+          sb.from("column_values")
+            .select("item_id, column_id, value, text_cache, items!inner(board_id)")
+            .eq("items.board_id", boardId)
+            .order("item_id").order("column_id").range(from, to),
+        ),
       ]);
       const cellMap: CellMap = {};
-      for (const cv of ok(values) as any[]) {
+      for (const cv of values) {
         (cellMap[cv.item_id] ??= {})[cv.column_id] = { value: cv.value, text_cache: cv.text_cache };
       }
 
       // Demandas recorrentes concluídas num período que já passou voltam a
       // ficar pendentes: limpa o carimbo e o status de conclusão. Roda aqui,
       // ao abrir o quadro, para não depender de rotina agendada no servidor.
-      const reopened = await reopenDueRecurring(ok(items) as Item[], ok(columns) as BoardColumn[], cellMap);
+      const reopened = await reopenDueRecurring(items, ok(columns) as BoardColumn[], cellMap);
 
       return {
         board: ok(board),
@@ -446,31 +456,45 @@ export function useMyItems(userId: string | undefined) {
     queryKey: ["my-items", userId],
     enabled: Boolean(userId),
     queryFn: async () => {
-      const { data, error } = await sb
-        .from("column_values")
-        .select("item_id, value, columns!inner(type), items!inner(id, name, description, state, board_id, updated_at, boards!inner(id, name, icon, color))")
-        .eq("columns.type", "people")
-        .eq("items.state", "active")
-        .contains("value", { personsAndTeams: [{ id: userId, kind: "person" }] });
-      if (error) throw new Error(error.message);
+      const data = await fetchAllRows<any>((from, to) =>
+        sb
+          .from("column_values")
+          .select("item_id, value, columns!inner(type), items!inner(id, name, description, state, board_id, updated_at, boards!inner(id, name, icon, color))")
+          .eq("columns.type", "people")
+          .eq("items.state", "active")
+          .contains("value", { personsAndTeams: [{ id: userId, kind: "person" }] })
+          .order("item_id")
+          .range(from, to),
+      );
 
       // Um item pode ter mais de uma coluna People — desduplica por item.
       const seen = new Map<string, any>();
-      for (const row of (data ?? []) as any[]) {
+      for (const row of data) {
         if (!seen.has(row.item_id)) seen.set(row.item_id, row.items);
       }
       const items = Array.from(seen.values());
       if (items.length === 0) return [];
 
-      // Busca as datas desses itens para o filtro "hoje".
+      // Busca as datas desses itens para o filtro "hoje". Os ids vão em lotes:
+      // um `.in()` com milhares de uuids estoura o tamanho máximo da URL.
       const ids = items.map((i) => i.id);
-      const { data: dateCells } = await sb
-        .from("column_values")
-        .select("item_id, value, columns!inner(type)")
-        .in("columns.type", ["date", "timeline"])
-        .in("item_id", ids);
+      const dateCells: any[] = [];
+      for (let i = 0; i < ids.length; i += 300) {
+        const slice = ids.slice(i, i + 300);
+        dateCells.push(
+          ...(await fetchAllRows<any>((from, to) =>
+            sb
+              .from("column_values")
+              .select("item_id, value, columns!inner(type)")
+              .in("columns.type", ["date", "timeline"])
+              .in("item_id", slice)
+              .order("item_id")
+              .range(from, to),
+          )),
+        );
+      }
       const datesByItem = new Map<string, string[]>();
-      for (const cv of (dateCells ?? []) as any[]) {
+      for (const cv of dateCells) {
         const v = cv.value as { date?: string; from?: string; to?: string } | null;
         const list = datesByItem.get(cv.item_id) ?? [];
         if (v?.date) list.push(v.date);

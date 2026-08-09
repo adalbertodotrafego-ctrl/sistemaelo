@@ -444,7 +444,7 @@ function BoardCard({ b, canDrag, fav, onToggleFav, onSettings, onDuplicate, onAr
   folders: any[]; onMoveToFolder: (folderId: string | null) => void;
   canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void;
 }) {
-  const accent = b.color || "hsl(var(--primary))";
+  const accent = b.color || "var(--color-primary)";
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: b.id, disabled: !canDrag });
   const style = { transform: CSS.Transform.toString(transform), transition, borderTop: `3px solid ${accent}`, zIndex: isDragging ? 20 : undefined };
   return (

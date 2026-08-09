@@ -50,7 +50,14 @@ export function CursorGlow() {
       aria-hidden
       className="pointer-events-none fixed left-0 top-0 z-[1] h-[500px] w-[500px] rounded-full opacity-0 transition-opacity duration-500 mix-blend-screen"
       style={{
-        background: "radial-gradient(circle, hsl(var(--primary) / 0.18) 0%, hsl(var(--primary) / 0.07) 35%, transparent 70%)",
+        // As variáveis do tema são oklch(...), não canais soltos de HSL:
+        // `hsl(var(--primary))` era CSS inválido e o gradiente inteiro caía
+        // fora — a luz existia no DOM e nunca aparecia na tela.
+        background:
+          "radial-gradient(circle," +
+          " color-mix(in oklch, var(--color-primary) 18%, transparent) 0%," +
+          " color-mix(in oklch, var(--color-primary) 7%, transparent) 35%," +
+          " transparent 70%)",
         filter: "blur(8px)",
       }}
     />

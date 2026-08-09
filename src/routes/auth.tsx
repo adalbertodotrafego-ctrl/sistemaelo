@@ -20,7 +20,7 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [invite, setInvite] = useState<{ id: string; note: string | null } | null>(null);
+  const [invite, setInvite] = useState<{ token: string; note: string | null } | null>(null);
   const [inviteInvalid, setInviteInvalid] = useState(false);
 
   // Se o retorno do Google/Supabase trouxe um erro na URL, mostra em vez de
@@ -42,11 +42,12 @@ function AuthPage() {
     const token = new URLSearchParams(window.location.search).get("convite");
     if (!token) return;
     (async () => {
-      const { data, error } = await (supabase as any)
-        .from("invites").select("id, note, expires_at, used_at").eq("token", token).maybeSingle();
-      if (error || !data) return setInviteInvalid(true);
-      if (data.used_at || new Date(data.expires_at) < new Date()) return setInviteInvalid(true);
-      setInvite({ id: data.id, note: data.note });
+      // Valida pela RPC: ela responde só sobre o token que veio no link.
+      // Ler a tabela direto deixaria qualquer visitante listar os convites.
+      const { data, error } = await (supabase as any).rpc("validate_invite", { _token: token });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row?.valid) return setInviteInvalid(true);
+      setInvite({ token, note: row.note ?? null });
       setMode("request");
     })();
   }, []);
@@ -81,8 +82,9 @@ function AuthPage() {
     if (error) return toast.error(error.message);
 
     if (invite) {
-      await (supabase as any).from("invites")
-        .update({ used_at: new Date().toISOString(), used_by: data.user?.id ?? null }).eq("id", invite.id);
+      // Carimba pela RPC (roda como o usuário recém-criado e só aceita
+      // convite que ainda vale) — a tabela não é mais escrita pelo cliente.
+      await (supabase as any).rpc("consume_invite", { _token: invite.token });
     }
     // Avisa os admins que há uma solicitação nova (best-effort).
     try {
@@ -131,7 +133,7 @@ function AuthPage() {
           transition={{ duration: 15, ease: "easeInOut", repeat: Infinity }}
           className="absolute -right-24 bottom-0 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-[130px]"
         />
-        <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(hsl(var(--border))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border))_1px,transparent_1px)] [background-size:44px_44px]" />
+        <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] [background-size:44px_44px]" />
       </div>
 
       <motion.div
