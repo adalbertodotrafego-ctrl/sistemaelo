@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -22,14 +23,9 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { initials, brl } from "@/lib/format";
 import {
   Users, Plus, Search, Building2, MoreVertical, Pencil, Trash2, Upload, Loader2, X,
-  AlertTriangle, TrendingUp, CheckCircle2, Tag, GripVertical,
+  AlertTriangle, TrendingUp, CheckCircle2, Tag, PlayCircle, PauseCircle, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 // Paleta das etiquetas de cliente (mesma linguagem visual do CRM).
 const LABEL_PALETTE = [
@@ -49,9 +45,17 @@ export const Route = createFileRoute("/_authenticated/clients/")({
   component: ClientsPage,
 });
 
-const STATUS_LABELS: Record<string, string> = {
-  active: "Ativo", paused: "Pausado", churned: "Cancelado", prospect: "Prospect",
-};
+const STATUS_LABELS: Record<string, string> = { active: "Ativo", paused: "Pausado", churned: "Cancelado" };
+
+const STATUS_GROUPS = [
+  { value: "active", title: "Ativos", icon: PlayCircle, accent: "text-emerald-400" },
+  { value: "paused", title: "Pausados", icon: PauseCircle, accent: "text-amber-400" },
+  { value: "churned", title: "Cancelados", icon: XCircle, accent: "text-red-400" },
+] as const;
+
+// Clientes "prospect" (status legado, tirado do formulário) continuam
+// existindo no banco — para não sumirem da tela, entram na tabela de Ativos.
+const groupOf = (status: string) => (status === "paused" || status === "churned" ? status : "active");
 
 const emptyForm = {
   name: "", company: "", segment: "", email: "", phone: "",
@@ -87,7 +91,6 @@ function ClientsPage() {
   const [labelFilter, setLabelFilter] = useState<string | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [newLabel, setNewLabel] = useState({ name: "", color: "blue" });
-  const [orderedIds, setOrderedIds] = useState<string[] | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
 
   const { data: clients, isLoading } = useQuery({
@@ -95,12 +98,7 @@ function ClientsPage() {
     queryFn: async () => {
       const { data, error } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
       if (error) throw error;
-      // Ordena pela posição manual (arrastar); cai pro created_at quando não há.
-      return [...(data ?? [])].sort((a: any, b: any) => {
-        const pa = a.position ?? new Date(a.created_at).getTime() / 1000;
-        const pb = b.position ?? new Date(b.created_at).getTime() / 1000;
-        return pa - pb;
-      });
+      return data ?? [];
     },
   });
 
@@ -144,7 +142,7 @@ function ClientsPage() {
       email: c.email ?? "", phone: c.phone ?? "", whatsapp: c.whatsapp ?? "",
       city: c.city ?? "", state: c.state ?? "", plan: c.plan ?? "",
       monthly_value: c.monthly_value != null ? String(c.monthly_value) : "",
-      status: c.status ?? "active",
+      status: groupOf(c.status ?? "active"),
       logo_url: c.logo_url ?? "",
     });
     setFormLabels(Array.isArray(c.label_ids) ? c.label_ids : []);
@@ -220,17 +218,6 @@ function ClientsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // ---- Reordenar (arrastar) ----
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  const persistOrder = useMutation({
-    mutationFn: async (ids: string[]) => {
-      // Regrava a posição de todos na nova ordem (espaçado de 10 em 10).
-      await Promise.all(ids.map((id, i) => supabase.from("clients").update({ position: (i + 1) * 10 } as any).eq("id", id)));
-    },
-    onError: (e: Error) => toast.error(e.message),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["clients"] }),
-  });
-
   const remove = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("clients").delete().eq("id", id);
@@ -245,32 +232,11 @@ function ClientsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Ordem exibida: aplica a reordenação otimista (durante o arrastar) sobre a lista do servidor.
-  const base = clients ?? [];
-  const ordered = orderedIds
-    ? [
-        ...orderedIds.map((id) => base.find((c: any) => c.id === id)).filter(Boolean),
-        ...base.filter((c: any) => !orderedIds.includes(c.id)), // recém-adicionados vão pro fim
-      ]
-    : base;
   const term = search.trim().toLowerCase();
-  const filtered = ordered.filter((c: any) =>
+  const filtered = (clients ?? []).filter((c: any) =>
     (!term || [c.name, c.company, c.email, c.segment].filter(Boolean).join(" ").toLowerCase().includes(term)) &&
     (!labelFilter || (c.label_ids ?? []).includes(labelFilter)),
   );
-  // Arrastar só faz sentido na visão completa (sem busca/filtro).
-  const canDrag = !term && !labelFilter;
-
-  const onDragEnd = (e: DragEndEvent) => {
-    if (!e.over || e.active.id === e.over.id) return;
-    const ids = filtered.map((c: any) => c.id);
-    const from = ids.indexOf(String(e.active.id));
-    const to = ids.indexOf(String(e.over.id));
-    if (from < 0 || to < 0) return;
-    const next = arrayMove(ids, from, to);
-    setOrderedIds(next);
-    persistOrder.mutate(next);
-  };
 
   // Enquanto a migração da coluna logo_url não estiver aplicada no banco, o upload
   // de logo fica oculto — evita o usuário subir uma imagem que não seria salva.
@@ -388,7 +354,7 @@ function ClientsPage() {
         </div>
       )}
 
-      {(labels.length > 0 || canDrag) && (
+      {labels.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {labels.map((l: any) => {
             const p = paletteByKey(l.color);
@@ -405,17 +371,12 @@ function ClientsPage() {
               <X className="h-3 w-3" />Limpar
             </button>
           )}
-          {canDrag && (
-            <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
-              <GripVertical className="h-3 w-3" />Arraste os cards para organizar
-            </span>
-          )}
         </div>
       )}
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="surface-card h-40 animate-pulse" />
           ))}
         </div>
@@ -427,22 +388,48 @@ function ClientsPage() {
           action={<Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Cadastrar cliente</Button>}
         />
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={filtered.map((c: any) => c.id)} strategy={rectSortingStrategy}>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((c: any) => (
-                <ClientCard
-                  key={c.id} c={c} canDrag={canDrag} adBudgets={adBudgets}
-                  labels={(c.label_ids ?? []).map((id: string) => labelById(id)).filter(Boolean)}
-                  onEdit={() => openEdit(c)}
-                  // Excluir cliente arrasta contratos, relatórios e anotações
-                  // junto (cascade no banco). É ação de admin.
-                  onDelete={isAdmin ? () => setDeleteTarget(c) : undefined}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div className="space-y-8">
+          {STATUS_GROUPS.map((group) => {
+            const rows = filtered.filter((c: any) => groupOf(c.status ?? "active") === group.value);
+            return (
+              <div key={group.value}>
+                <div className="mb-2 flex items-center gap-2">
+                  <group.icon className={"h-4 w-4 " + group.accent} />
+                  <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">{group.title}</h2>
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{rows.length}</span>
+                </div>
+                {rows.length === 0 ? (
+                  <div className="surface-card p-6 text-center text-xs text-muted-foreground">Nenhum cliente {group.title.toLowerCase()}.</div>
+                ) : (
+                  <div className="surface-card overflow-hidden p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Cliente</TableHead>
+                          <TableHead className="hidden md:table-cell">Segmento</TableHead>
+                          <TableHead className="hidden lg:table-cell">Etiquetas</TableHead>
+                          <TableHead>Mensalidade</TableHead>
+                          {adBudgets && <TableHead className="hidden sm:table-cell">Verba de mídia</TableHead>}
+                          <TableHead className="w-10" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rows.map((c: any) => (
+                          <ClientRow
+                            key={c.id} c={c} adBudgets={adBudgets}
+                            labels={(c.label_ids ?? []).map((id: string) => labelById(id)).filter(Boolean)}
+                            onEdit={() => openEdit(c)}
+                            onDelete={isAdmin ? () => setDeleteTarget(c) : undefined}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
@@ -502,91 +489,70 @@ function ClientsPage() {
   );
 }
 
-function ClientCard({ c, canDrag, adBudgets, labels, onEdit, onDelete }: {
-  c: any; canDrag: boolean; adBudgets: any; labels: any[]; onEdit: () => void; onDelete?: () => void;
+function ClientRow({ c, adBudgets, labels, onEdit, onDelete }: {
+  c: any; adBudgets: any; labels: any[]; onEdit: () => void; onDelete?: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id, disabled: !canDrag });
-  const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 20 : undefined };
   const budget = adBudgets?.byClient?.[c.id] as ClientAdBudget | undefined;
 
   return (
-    <div ref={setNodeRef} style={style} className={"surface-card group relative p-5 transition-all hover:-translate-y-0.5 hover:shadow-elegant " + (isDragging ? "opacity-60 shadow-elegant" : "")}>
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5">
-        {canDrag && (
-          <button {...attributes} {...listeners} onClick={(e) => e.preventDefault()} title="Arrastar" className="cursor-grab rounded p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 active:cursor-grabbing">
-            <GripVertical className="h-4 w-4" />
-          </button>
-        )}
+    <TableRow>
+      <TableCell>
+        <Link to="/clients/$id" params={{ id: c.id }} className="flex items-center gap-3">
+          <Avatar className="h-9 w-9 shrink-0">
+            {c.logo_url && <AvatarImage src={c.logo_url} alt={c.company ?? c.name} className="object-cover" />}
+            <AvatarFallback className="bg-primary/15 text-primary">{initials(c.company ?? c.name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="truncate font-medium">{c.company ?? c.name}</div>
+            <div className="truncate text-xs text-muted-foreground">{c.name}</div>
+          </div>
+        </Link>
+      </TableCell>
+      <TableCell className="hidden md:table-cell">
+        {c.segment ? (
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building2 className="h-3.5 w-3.5" />{c.segment}</span>
+        ) : <span className="text-muted-foreground">—</span>}
+      </TableCell>
+      <TableCell className="hidden lg:table-cell">
+        {labels.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {labels.map((l: any) => {
+              const p = paletteByKey(l.color);
+              return <span key={l.id} className={"rounded-full border px-1.5 py-0 text-[9px] " + p.chip}>{l.name}</span>;
+            })}
+          </div>
+        ) : <span className="text-muted-foreground">—</span>}
+      </TableCell>
+      <TableCell className="font-medium">{brl(c.monthly_value)}</TableCell>
+      {adBudgets && (
+        <TableCell className="hidden sm:table-cell">
+          {!budget ? (
+            <span className="text-xs text-muted-foreground">{adBudgets.metaError ? "Integração indisponível" : "Sem conta de anúncios"}</span>
+          ) : (() => {
+            const s = budgetStatus(budget);
+            return (
+              <Badge variant="outline" className={`gap-1 text-[10px] ${s.cls}`}>
+                <s.Icon className="h-3 w-3" />{s.label}
+              </Badge>
+            );
+          })()}
+        </TableCell>
+      )}
+      <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); }} className="rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100">
+            <button className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
               <MoreVertical className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+          <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onEdit}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</DropdownMenuItem>
             {onDelete && (
               <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-3.5 w-3.5" />Excluir</DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-      <Link to="/clients/$id" params={{ id: c.id }} className="block">
-        <div className="flex items-start gap-3">
-          <Avatar className="h-12 w-12">
-            {c.logo_url && <AvatarImage src={c.logo_url} alt={c.company ?? c.name} className="object-cover" />}
-            <AvatarFallback className="bg-primary/15 text-primary">{initials(c.company ?? c.name)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1 pr-12">
-            <div className="truncate font-display text-base font-semibold">{c.company ?? c.name}</div>
-            <div className="truncate text-xs text-muted-foreground">{c.name}</div>
-          </div>
-          <Badge variant={c.status === "active" ? "default" : "secondary"} className="text-[10px]">{STATUS_LABELS[c.status]}</Badge>
-        </div>
-
-        {labels.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1">
-            {labels.map((l: any) => {
-              const p = paletteByKey(l.color);
-              return <span key={l.id} className={"rounded-full border px-1.5 py-0 text-[9px] " + p.chip}>{l.name}</span>;
-            })}
-          </div>
-        )}
-
-        <div className="mt-4 space-y-1.5 text-xs text-muted-foreground">
-          {c.segment && <div className="flex items-center gap-1.5"><Building2 className="h-3 w-3" />{c.segment}</div>}
-          {c.email && <div className="truncate">{c.email}</div>}
-        </div>
-        <div className="mt-4 flex items-end justify-between border-t border-border/60 pt-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Mensalidade</div>
-            <div className="font-display text-lg font-semibold">{brl(c.monthly_value)}</div>
-          </div>
-          <div className="text-[10px] text-muted-foreground">{c.plan ?? "—"}</div>
-        </div>
-        {adBudgets && (!budget ? (
-          <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
-              <div className="font-display text-sm font-semibold text-muted-foreground">—</div>
-            </div>
-            <span className="text-[10px] text-muted-foreground">{adBudgets.metaError ? "Integração indisponível" : "Sem conta de anúncios"}</span>
-          </div>
-        ) : (() => {
-          const status = budgetStatus(budget);
-          return (
-            <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Verba de mídia</div>
-                <div className="font-display text-sm font-semibold">{budget.budgetDaily > 0 ? `${money(budget.budgetDaily, budget.currency)}/dia` : "—"}</div>
-              </div>
-              <Badge variant="outline" className={`gap-1 text-[10px] ${status.cls}`}>
-                <status.Icon className="h-3 w-3" />{status.label}
-              </Badge>
-            </div>
-          );
-        })())}
-      </Link>
-    </div>
+      </TableCell>
+    </TableRow>
   );
 }

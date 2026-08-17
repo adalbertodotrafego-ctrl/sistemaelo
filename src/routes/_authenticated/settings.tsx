@@ -11,11 +11,12 @@ import { toast } from "sonner";
 import { uploadImage } from "@/lib/storage";
 import {
   Upload, Loader2, Shield, Users2, ArrowRight, Sun, Moon, HelpCircle, ChevronDown,
-  Lock, Database, Globe, Instagram,
+  Lock, Database, KeyRound, BellRing,
 } from "lucide-react";
 import { usePermissions, TOGGLEABLE_PAGES } from "@/hooks/use-permissions";
 import { useLang } from "@/hooks/use-language";
 import { useTheme } from "@/hooks/use-theme";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { RolesManager } from "@/components/roles-manager";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -33,6 +34,8 @@ function SettingsPage() {
 
       <div className="space-y-10">
         <Section title={t("settings.preferences")}><PreferencesTab /></Section>
+        <Section title="Notificações"><NotificationsTab /></Section>
+        <Section title="Segurança"><SecurityTab /></Section>
         <Section title={t("settings.faq")}><FaqTab /></Section>
         <Section title={t("settings.privacy")}><PrivacyTab /></Section>
         <Section title={t("settings.about")}><AboutTab /></Section>
@@ -41,8 +44,6 @@ function SettingsPage() {
         {isAdmin && <Section title="Seções do sistema"><SectionsTab /></Section>}
         {isAdmin && <Section title="Equipe"><TeamShortcutTab /></Section>}
       </div>
-
-      <SettingsFooter />
     </div>
   );
 }
@@ -55,9 +56,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     </section>
   );
 }
-
-const ELO_SITE = "https://elomarketing.com.br";
-const ELO_INSTAGRAM = "https://www.instagram.com/elomarketing";
 
 function PreferencesTab() {
   const { lang, setLang, t } = useLang();
@@ -87,6 +85,60 @@ function PreferencesTab() {
           {theme === "dark" ? <><Sun className="mr-2 h-4 w-4" />Escuro</> : <><Moon className="mr-2 h-4 w-4" />Claro</>}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function NotificationsTab() {
+  const push = usePushNotifications();
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <div className="surface-card flex items-center justify-between p-4">
+        <div>
+          <div className="flex items-center gap-1.5 text-sm font-medium"><BellRing className="h-4 w-4 text-primary" />Avisos no navegador</div>
+          <div className="text-xs text-muted-foreground">
+            {push.supported
+              ? "Receba notificações do sistema (menções, reuniões, novidades) mesmo com a aba fechada."
+              : "Seu navegador não tem suporte a notificações push."}
+          </div>
+        </div>
+        <Switch
+          checked={push.subscribed}
+          disabled={!push.supported || push.loading}
+          onCheckedChange={(v) => {
+            if (v) push.subscribe().then(() => toast.success("Notificações ativadas neste navegador!")).catch((err: Error) => toast.error(err.message));
+            else push.unsubscribe().catch((err: Error) => toast.error(err.message));
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SecurityTab() {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+
+  const changePassword = useMutation({
+    mutationFn: async () => {
+      if (password.length < 6) throw new Error("A senha precisa ter pelo menos 6 caracteres");
+      if (password !== confirm) throw new Error("As senhas não coincidem");
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Senha atualizada!"); setPassword(""); setConfirm(""); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="surface-card max-w-xl space-y-4 p-6">
+      <div className="flex items-center gap-2 text-sm font-medium"><KeyRound className="h-4 w-4 text-primary" />Alterar senha</div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><Label>Nova senha</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" /></div>
+        <div><Label>Confirmar senha</Label><Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></div>
+      </div>
+      <Button onClick={() => changePassword.mutate()} disabled={!password || !confirm || changePassword.isPending}>Atualizar senha</Button>
     </div>
   );
 }
@@ -142,25 +194,6 @@ function AboutTab() {
         <h3 className="font-display text-base font-semibold text-foreground">Sobre o Elo Marketing OS</h3>
         <p>Sistema operacional interno da Elo Marketing: clientes, CRM, tarefas, campanhas, relatórios, eventos e financeiro num só lugar.</p>
         <p className="text-xs">Criado por <strong className="text-foreground">Gabriel Tobar</strong>.</p>
-      </div>
-    </div>
-  );
-}
-
-function SettingsFooter() {
-  return (
-    <div className="mt-10 border-t border-border/60 pt-6">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <div className="font-display text-lg font-bold tracking-tight">Elo Marketing<span className="text-primary"> OS</span></div>
-        <div className="flex flex-wrap justify-center gap-3">
-          <Button asChild variant="outline">
-            <a href={ELO_SITE} target="_blank" rel="noopener noreferrer"><Globe className="mr-2 h-4 w-4" />Site da Elo Marketing</a>
-          </Button>
-          <Button asChild>
-            <a href={ELO_INSTAGRAM} target="_blank" rel="noopener noreferrer"><Instagram className="mr-2 h-4 w-4" />Elo no Instagram</a>
-          </Button>
-        </div>
-        <p className="text-[11px] text-muted-foreground">© {new Date().getFullYear()} Elo Marketing OS · Todos os direitos reservados · Criado por Gabriel Tobar</p>
       </div>
     </div>
   );

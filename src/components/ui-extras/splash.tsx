@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 /**
  * Splash da Elo OS — aparece uma vez por carregamento do app e some com
- * elegância. Anel giratório + monograma "e" + logotipo, feito só para a Elo.
+ * elegância. Anéis giratórios + a marca "elomkt" pulsando + logotipo.
  */
 export function Splash() {
   const [show, setShow] = useState(true);
@@ -50,11 +50,11 @@ export function Splash() {
               />
               <motion.div
                 initial={{ scale: 0.6, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 font-display text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/30"
+                animate={{ scale: [0.85, 1, 0.85], opacity: 1 }}
+                transition={{ scale: { duration: 1.6, ease: "easeInOut", repeat: Infinity }, opacity: { duration: 0.6, ease: "easeOut" } }}
+                className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 p-2.5 shadow-lg shadow-primary/30"
               >
-                e
+                <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
               </motion.div>
             </div>
 

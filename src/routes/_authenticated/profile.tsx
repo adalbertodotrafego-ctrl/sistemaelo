@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { initials } from "@/lib/format";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { LogOut, Upload, Loader2, Plus, Trash2, BadgeCheck, Clock, ShieldCheck } from "lucide-react";
+import { LogOut, Upload, Loader2, Plus, Trash2, BadgeCheck, Clock, ShieldCheck, Bot, Sparkles, Wrench, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import { uploadImage } from "@/lib/storage";
 
@@ -137,6 +137,32 @@ function ProfilePage() {
         </div>
       </div>
 
+      <div className="surface-card mt-6 space-y-3 p-6 text-sm text-muted-foreground">
+        <h3 className="flex items-center gap-2 font-display text-base font-semibold text-foreground">
+          <Bot className="h-4 w-4 text-primary" />Sobre o assistente do sistema
+        </h3>
+        <p>
+          O Elo Marketing OS é desenvolvido e mantido com o <strong className="text-foreground">Claude Code</strong>, o assistente de programação da Anthropic. Cada tela, ajuste visual e correção que você vê aqui passou por esse fluxo.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-border/60 bg-surface-2/40 p-3">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <div className="mt-1.5 text-xs font-medium text-foreground">Novas telas e recursos</div>
+            <div className="mt-0.5 text-[11px]">Implementa páginas e funcionalidades do zero, do design ao banco de dados.</div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-surface-2/40 p-3">
+            <Wrench className="h-4 w-4 text-primary" />
+            <div className="mt-1.5 text-xs font-medium text-foreground">Correções e ajustes</div>
+            <div className="mt-0.5 text-[11px]">Resolve bugs e refina detalhes de UI a pedido da equipe da Elo.</div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-surface-2/40 p-3">
+            <GitBranch className="h-4 w-4 text-primary" />
+            <div className="mt-1.5 text-xs font-medium text-foreground">Migrações de banco</div>
+            <div className="mt-0.5 text-[11px]">Mudanças de estrutura de dados vêm com uma migração SQL para aplicar no Supabase.</div>
+          </div>
+        </div>
+        <p className="text-xs">Dúvidas ou pedidos de mudança no sistema passam por Gabriel Tobar.</p>
+      </div>
     </div>
   );
 }

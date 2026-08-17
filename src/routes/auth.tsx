@@ -120,40 +120,74 @@ function AuthPage() {
   };
 
   return (
-    <div className="dark relative flex min-h-screen items-center justify-center overflow-hidden bg-[#07070a] px-4 py-12 text-foreground">
-      {/* Fundo aurora animado */}
-      <div className="pointer-events-none absolute inset-0">
-        <motion.div
-          animate={{ x: [0, 60, 0], y: [0, -40, 0], opacity: [0.35, 0.55, 0.35] }}
-          transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
-          className="absolute -left-32 top-0 h-[480px] w-[480px] rounded-full bg-primary/30 blur-[130px]"
-        />
-        <motion.div
-          animate={{ x: [0, -50, 0], y: [0, 50, 0], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 15, ease: "easeInOut", repeat: Infinity }}
-          className="absolute -right-24 bottom-0 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-[130px]"
-        />
-        <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] [background-size:44px_44px]" />
-      </div>
+    <div className="dark relative flex min-h-screen overflow-hidden bg-[#07070a] text-foreground lg:grid lg:grid-cols-2">
+      {/* Coluna de marca — só aparece em telas grandes; em mobile vira um
+          cabeçalho compacto acima do formulário. */}
+      <div className="relative hidden flex-col items-center justify-center overflow-hidden border-r border-white/5 px-10 lg:flex">
+        <div className="pointer-events-none absolute inset-0">
+          <motion.div
+            animate={{ x: [0, 60, 0], y: [0, -40, 0], opacity: [0.35, 0.55, 0.35] }}
+            transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
+            className="absolute -left-32 top-0 h-[480px] w-[480px] rounded-full bg-primary/30 blur-[130px]"
+          />
+          <motion.div
+            animate={{ x: [0, -50, 0], y: [0, 50, 0], opacity: [0.2, 0.4, 0.2] }}
+            transition={{ duration: 15, ease: "easeInOut", repeat: Infinity }}
+            className="absolute -right-24 bottom-0 h-[420px] w-[420px] rounded-full bg-indigo-500/25 blur-[130px]"
+          />
+          <motion.div
+            animate={{ x: [0, 30, 0], y: [0, 30, 0], opacity: [0.15, 0.3, 0.15] }}
+            transition={{ duration: 18, ease: "easeInOut", repeat: Infinity }}
+            className="absolute left-1/3 top-1/3 h-[320px] w-[320px] rounded-full bg-purple-500/20 blur-[110px]"
+          />
+          <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] [background-size:44px_44px]" />
+        </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl shadow-black/50 backdrop-blur-2xl"
-      >
-        {/* Monograma + marca */}
-        <div className="mb-7 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 font-display text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/30">
-            e
-          </div>
-          <div className="font-display text-xl font-bold tracking-tight text-white">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="relative flex flex-col items-center text-center"
+        >
+          <img src="/logo-mark.png" alt="Elo Marketing" className="h-24 w-auto drop-shadow-[0_0_40px_rgba(37,99,235,0.35)]" />
+          <div className="mt-6 font-display text-3xl font-bold tracking-tight text-white">
             Elo Marketing<span className="text-primary"> OS</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40">
-            <ShieldCheck className="h-3 w-3" />Acesso restrito
+          <p className="mt-3 max-w-xs text-sm text-white/50">
+            Clientes, tarefas, campanhas e financeiro da agência — tudo num só lugar.
+          </p>
+          <div className="mt-6 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40">
+            <ShieldCheck className="h-3 w-3" />Sistema privado · acesso restrito
           </div>
+        </motion.div>
+      </div>
+
+      {/* Coluna do formulário */}
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden px-4 py-12">
+        <div className="pointer-events-none absolute inset-0 lg:hidden">
+          <motion.div
+            animate={{ x: [0, 40, 0], y: [0, -30, 0], opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
+            className="absolute -left-20 top-0 h-[320px] w-[320px] rounded-full bg-primary/25 blur-[100px]"
+          />
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl shadow-black/50 backdrop-blur-2xl"
+        >
+          {/* Monograma + marca — só em mobile, já que o desktop tem a coluna de marca */}
+          <div className="mb-7 flex flex-col items-center text-center lg:hidden">
+            <img src="/logo-mark.png" alt="Elo Marketing" className="mb-3 h-12 w-auto" />
+            <div className="font-display text-xl font-bold tracking-tight text-white">
+              Elo Marketing<span className="text-primary"> OS</span>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40">
+              <ShieldCheck className="h-3 w-3" />Acesso restrito
+            </div>
+          </div>
 
         <div className="w-full">
           {invite && mode === "request" && (
@@ -253,7 +287,8 @@ function AuthPage() {
             </>
           )}
         </div>
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 }
