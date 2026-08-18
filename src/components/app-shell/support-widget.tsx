@@ -1,41 +1,20 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { LifeBuoy } from "lucide-react";
-import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { LifeBuoy, Send, Loader2 } from "lucide-react";
 import { useCurrentUser } from "@/hooks/use-auth";
+import {
+  useMyConversation, useConversationReplies, useStartConversation, useSendReply, useSupportRealtime,
+} from "@/lib/support";
 
 export function SupportWidget() {
   const { user } = useCurrentUser();
   const [open, setOpen] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
-
-  const send = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("Faça login para falar com o suporte");
-      const { error } = await (supabase as any).from("support_messages").insert({
-        user_id: user.id, subject: subject.trim(), message: message.trim(),
-      });
-      if (error) {
-        if (/does not exist|schema cache/i.test(error.message)) {
-          throw new Error("Suporte ainda não está configurado neste ambiente — aplique a migração 20260817130000_support.sql.");
-        }
-        throw error;
-      }
-    },
-    onSuccess: () => {
-      toast.success("Mensagem enviada! Um admin vai te responder em breve.");
-      setOpen(false); setSubject(""); setMessage("");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   if (!user) return null;
 
@@ -58,18 +37,121 @@ export function SupportWidget() {
       </TooltipProvider>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Falar com suporte</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Assunto *</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex: Erro ao salvar cliente" /></div>
-            <div><Label>Mensagem *</Label><Textarea rows={5} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Descreva o problema ou dúvida com o máximo de detalhes…" /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={() => send.mutate()} disabled={!subject.trim() || !message.trim() || send.isPending}>Enviar</Button>
-          </DialogFooter>
+        <DialogContent className="flex max-h-[85vh] flex-col p-0 sm:max-w-lg">
+          <SupportChat userId={user.id} />
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function SupportChat({ userId }: { userId: string }) {
+  const { data, isLoading } = useMyConversation();
+  useSupportRealtime("mine", userId);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center p-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  }
+  if (data?.missing) {
+    return (
+      <div className="p-6 text-sm text-amber-500">
+        Suporte ainda não está configurado neste ambiente — aplique as migrações de suporte no Supabase.
+      </div>
+    );
+  }
+  return data?.row ? <ChatThread conversation={data.row} /> : <StartChat />;
+}
+
+function StartChat() {
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const start = useStartConversation();
+
+  return (
+    <div className="p-6">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2"><LifeBuoy className="h-4 w-4 text-primary" />Falar com suporte</DialogTitle>
+      </DialogHeader>
+      <p className="mb-4 mt-1 text-sm text-muted-foreground">
+        Conte o que está acontecendo — um admin da Elo entra na conversa com você.
+      </p>
+      <div className="space-y-3">
+        <div><Label>Assunto</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex: Erro ao salvar cliente" /></div>
+        <div><Label>Mensagem</Label><Textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Descreva o problema ou dúvida…" /></div>
+      </div>
+      <Button
+        className="mt-4 w-full"
+        disabled={!subject.trim() || !message.trim() || start.isPending}
+        onClick={() => start.mutate({ subject, message })}
+      >
+        {start.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+        Iniciar conversa
+      </Button>
+    </div>
+  );
+}
+
+function ChatThread({ conversation }: { conversation: any }) {
+  const { user } = useCurrentUser();
+  const { data: replies } = useConversationReplies(conversation.id);
+  const [text, setText] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const send = useSendReply(conversation.id, { notifyAdmins: true, notifyTitle: "Nova mensagem de suporte" });
+
+  const sendMessage = async () => {
+    const body = text.trim();
+    if (!body) return;
+    setText("");
+    send.mutate(body);
+  };
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [replies?.length]);
+
+  const timeline = [
+    { id: conversation.id, sender_id: conversation.user_id, body: conversation.message, created_at: conversation.created_at },
+    ...(replies ?? []),
+  ];
+
+  return (
+    <>
+      <DialogHeader className="border-b border-border/60 px-6 py-4">
+        <DialogTitle className="flex items-center gap-2 text-base"><LifeBuoy className="h-4 w-4 text-primary" />{conversation.subject}</DialogTitle>
+      </DialogHeader>
+
+      <div ref={scrollRef} className="min-h-[320px] flex-1 space-y-3 overflow-y-auto bg-surface-2/40 p-4">
+        {timeline.map((m: any) => {
+          const mine = m.sender_id === user?.id;
+          return (
+            <div key={m.id} className={"flex items-end gap-2 " + (mine ? "flex-row-reverse" : "")}>
+              {!mine && (
+                <Avatar className="h-6 w-6 shrink-0"><AvatarFallback className="bg-primary/15 text-[10px] text-primary"><LifeBuoy className="h-3 w-3" /></AvatarFallback></Avatar>
+              )}
+              <div className={"max-w-[78%] rounded-2xl px-3.5 py-2 text-sm " + (mine ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm border border-border/50 bg-surface")}>
+                <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                <div className={"mt-0.5 text-[10px] " + (mine ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                  {new Date(m.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-end gap-2 border-t border-border/60 p-3">
+        <Textarea
+          rows={1}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+          placeholder="Escreva uma mensagem…"
+          className="min-h-9 flex-1 resize-none"
+        />
+        <Button size="icon" className="shrink-0" onClick={sendMessage} disabled={!text.trim() || send.isPending}>
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
     </>
   );
 }

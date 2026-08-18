@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, PartyPopper, ArrowLeft, ShieldCheck, Sparkles } from "lucide-react";
+import { Loader2, PartyPopper, ArrowLeft, ShieldCheck, Sparkles, Users, LayoutGrid, BarChart3 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Entrar — Elo Marketing OS" }] }),
@@ -119,12 +119,18 @@ function AuthPage() {
     if (error) { setLoading(false); toast.error("Falha ao entrar com Google"); }
   };
 
+  const features = [
+    { icon: Users, label: "Clientes e CRM", desc: "Verba, contratos e histórico num só lugar" },
+    { icon: LayoutGrid, label: "Tarefas em quadros", desc: "Colunas tipadas e colaboração ao vivo" },
+    { icon: BarChart3, label: "Relatórios automáticos", desc: "Meta e Google Ads sempre atualizados" },
+  ];
+
   return (
-    <div className="dark relative flex min-h-screen overflow-hidden bg-[#07070a] text-foreground lg:grid lg:grid-cols-2">
+    <div className="dark min-h-screen overflow-y-auto bg-[#07070a] text-foreground lg:grid lg:grid-cols-2">
       {/* Coluna de marca — só aparece em telas grandes; em mobile vira um
           cabeçalho compacto acima do formulário. */}
-      <div className="relative hidden flex-col items-center justify-center overflow-hidden border-r border-white/5 px-10 lg:flex">
-        <div className="pointer-events-none absolute inset-0">
+      <div className="relative hidden flex-col justify-between overflow-hidden border-r border-white/5 px-12 py-14 lg:flex">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <motion.div
             animate={{ x: [0, 60, 0], y: [0, -40, 0], opacity: [0.35, 0.55, 0.35] }}
             transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
@@ -147,24 +153,61 @@ function AuthPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="relative flex flex-col items-center text-center"
+          className="relative flex items-center gap-3"
         >
-          <img src="/logo-mark.png" alt="Elo Marketing" className="h-24 w-auto drop-shadow-[0_0_40px_rgba(37,99,235,0.35)]" />
-          <div className="mt-6 font-display text-3xl font-bold tracking-tight text-white">
+          <img src="/logo-mark.png" alt="Elo Marketing" className="h-10 w-auto drop-shadow-[0_0_30px_rgba(37,99,235,0.35)]" />
+          <div className="font-display text-lg font-bold tracking-tight text-white">
             Elo Marketing<span className="text-primary"> OS</span>
           </div>
-          <p className="mt-3 max-w-xs text-sm text-white/50">
-            Clientes, tarefas, campanhas e financeiro da agência — tudo num só lugar.
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+          className="relative max-w-md"
+        >
+          <h1 className="font-display text-4xl font-bold leading-tight tracking-tight text-white">
+            Tudo da sua agência, <span className="text-primary">em um só lugar.</span>
+          </h1>
+          <p className="mt-4 text-sm leading-relaxed text-white/50">
+            Clientes, tarefas, campanhas e financeiro — o sistema operacional da Elo Marketing.
           </p>
-          <div className="mt-6 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40">
-            <ShieldCheck className="h-3 w-3" />Sistema privado · acesso restrito
+
+          <div className="mt-9 space-y-4">
+            {features.map((f, i) => (
+              <motion.div
+                key={f.label}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 + i * 0.1 }}
+                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <f.icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-white">{f.label}</div>
+                  <div className="truncate text-xs text-white/40">{f.desc}</div>
+                </div>
+              </motion.div>
+            ))}
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+          className="relative flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40"
+        >
+          <ShieldCheck className="h-3 w-3" />Sistema privado · acesso restrito
         </motion.div>
       </div>
 
       {/* Coluna do formulário */}
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden px-4 py-12">
-        <div className="pointer-events-none absolute inset-0 lg:hidden">
+      <div className="relative flex min-h-screen items-center justify-center px-4 py-12">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden lg:hidden">
           <motion.div
             animate={{ x: [0, 40, 0], y: [0, -30, 0], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}

@@ -4,6 +4,7 @@ import { KanbanView } from "@/components/boards/kanban";
 import { BoardTopbar } from "@/components/boards/topbar";
 import { BoardGrid } from "@/components/boards/board-grid";
 import { ItemPanel } from "@/components/boards/item-panel";
+import { TasksShell } from "@/components/boards/tasks-shell";
 import { useAddItem, useBoardData, useProfiles } from "@/lib/boards/queries";
 import type { Item } from "@/lib/boards/types";
 import { useBoardRealtime } from "@/lib/boards/realtime";
@@ -37,12 +38,20 @@ function BoardPage() {
     });
   }, [data, search]);
 
-  if (isLoading) return <p className="px-2 py-10 text-sm text-muted-foreground">Carregando quadro…</p>;
+  if (isLoading) {
+    return (
+      <TasksShell activeBoardId={boardId}>
+        <p className="px-4 py-10 text-sm text-muted-foreground">Carregando quadro…</p>
+      </TasksShell>
+    );
+  }
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        Erro ao carregar: {error.message}
-      </div>
+      <TasksShell activeBoardId={boardId}>
+        <div className="m-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          Erro ao carregar: {error.message}
+        </div>
+      </TasksShell>
     );
   }
   if (!data) return null;
@@ -60,41 +69,43 @@ function BoardPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] min-w-0 overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <BoardTopbar
-          board={data.board}
-          tab={tab}
-          onTabChange={setTab}
-          search={search}
-          onSearchChange={setSearch}
-          onNewItem={handleNewItem}
-          live={live}
-        />
-        <div className="min-h-0 flex-1 overflow-auto">
-          {tab === "table" ? (
-            <BoardGrid
-              boardId={data.board.id}
-              groups={data.groups}
-              columns={data.columns}
-              items={filteredItems}
-              cellMap={data.cellMap}
-              profiles={profiles ?? []}
-              onOpenItem={(it) => setOpenItemId(it.id)}
-            />
-          ) : (
-            <KanbanView
-              boardId={data.board.id}
-              groups={data.groups}
-              columns={data.columns}
-              items={filteredItems}
-              cellMap={data.cellMap}
-              onOpenItem={(it) => setOpenItemId(it.id)}
-            />
-          )}
+    <TasksShell activeBoardId={boardId}>
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <BoardTopbar
+            board={data.board}
+            tab={tab}
+            onTabChange={setTab}
+            search={search}
+            onSearchChange={setSearch}
+            onNewItem={handleNewItem}
+            live={live}
+          />
+          <div className="min-h-0 flex-1 overflow-auto">
+            {tab === "table" ? (
+              <BoardGrid
+                boardId={data.board.id}
+                groups={data.groups}
+                columns={data.columns}
+                items={filteredItems}
+                cellMap={data.cellMap}
+                profiles={profiles ?? []}
+                onOpenItem={(it) => setOpenItemId(it.id)}
+              />
+            ) : (
+              <KanbanView
+                boardId={data.board.id}
+                groups={data.groups}
+                columns={data.columns}
+                items={filteredItems}
+                cellMap={data.cellMap}
+                onOpenItem={(it) => setOpenItemId(it.id)}
+              />
+            )}
+          </div>
         </div>
+        {panelItem && <ItemPanel item={panelItem} boardId={boardId} onClose={() => setOpenItemId(null)} />}
       </div>
-      {panelItem && <ItemPanel item={panelItem} boardId={boardId} onClose={() => setOpenItemId(null)} />}
-    </div>
+    </TasksShell>
   );
 }

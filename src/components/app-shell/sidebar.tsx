@@ -48,11 +48,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: {
 
   const content = () => (
     <div className="flex h-full flex-col">
-      <Link to="/home" className="flex h-20 items-center justify-center border-b border-sidebar-border px-4">
+      <Link to="/home" className="flex h-24 items-center justify-center border-b border-border/60 px-4">
         <img
           src="/logo-mark.png"
           alt="Elo Marketing"
-          className="h-12 w-auto invert dark:invert-0"
+          className="h-16 w-auto invert dark:invert-0"
         />
       </Link>
 
@@ -137,7 +137,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: {
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-sidebar-border bg-sidebar shadow-xl shadow-black/20 lg:block">
+      <aside className="fixed inset-y-4 left-4 z-40 hidden w-64 overflow-hidden rounded-2xl border border-border/60 bg-sidebar shadow-lg shadow-black/10 backdrop-blur-xl lg:block">
         {content()}
       </aside>
 

@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen w-full">
       <Sidebar mobileOpen={open} onMobileClose={() => setOpen(false)} />
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-[288px]">
         <Topbar onMenu={() => setOpen(true)} />
         <main className="flex-1 px-4 pb-12 pt-24 sm:px-6 lg:px-10">
           <motion.div
