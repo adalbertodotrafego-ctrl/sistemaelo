@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Sem isso o build usa "cloudflare-module" por padrão (formato de Cloudflare
+  // Worker, sem servidor HTTP de verdade) — em produção rodamos com
+  // `node .output/server/index.mjs` (Railway), que precisa de um servidor Node
+  // real escutando em process.env.PORT. "node-server" é esse preset.
+  nitro: { preset: "node-server" },
 });
