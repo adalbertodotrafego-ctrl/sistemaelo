@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LifeBuoy, Send, Loader2 } from "lucide-react";
+import { LifeBuoy, Send, Loader2, X } from "lucide-react";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
   useMyConversation, useConversationReplies, useStartConversation, useSendReply, useSupportRealtime,
@@ -20,78 +20,107 @@ export function SupportWidget() {
 
   return (
     <>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="fixed bottom-24 right-6 z-50 flex max-h-[70vh] w-[22rem] flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl shadow-black/20 sm:w-96"
+          >
+            <SupportChat userId={user.id} onClose={() => setOpen(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              onClick={() => setOpen(true)}
+              onClick={() => setOpen((v) => !v)}
               aria-label="Falar com suporte"
               className="fixed bottom-6 right-6 z-50 flex h-13 w-13 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition hover:scale-105 hover:bg-primary/90"
               style={{ height: "3.25rem", width: "3.25rem" }}
             >
-              <LifeBuoy className="h-6 w-6" />
+              {open ? <X className="h-6 w-6" /> : <LifeBuoy className="h-6 w-6" />}
             </button>
           </TooltipTrigger>
           <TooltipContent side="left">Falar com suporte</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[85vh] flex-col p-0 sm:max-w-lg">
-          <SupportChat userId={user.id} />
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
 
-function SupportChat({ userId }: { userId: string }) {
+function SupportChat({ userId, onClose }: { userId: string; onClose: () => void }) {
   const { data, isLoading } = useMyConversation();
   useSupportRealtime("mine", userId);
 
   if (isLoading) {
-    return <div className="flex items-center justify-center p-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+    return (
+      <>
+        <ChatHeader title="Falar com suporte" onClose={onClose} />
+        <div className="flex flex-1 items-center justify-center p-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      </>
+    );
   }
   if (data?.missing) {
     return (
-      <div className="p-6 text-sm text-amber-500">
-        Suporte ainda não está configurado neste ambiente — aplique as migrações de suporte no Supabase.
-      </div>
+      <>
+        <ChatHeader title="Falar com suporte" onClose={onClose} />
+        <div className="p-6 text-sm text-amber-500">
+          Suporte ainda não está configurado neste ambiente — aplique as migrações de suporte no Supabase.
+        </div>
+      </>
     );
   }
-  return data?.row ? <ChatThread conversation={data.row} /> : <StartChat />;
+  return data?.row ? <ChatThread conversation={data.row} onClose={onClose} /> : <StartChat onClose={onClose} />;
 }
 
-function StartChat() {
+function ChatHeader({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <LifeBuoy className="h-4 w-4 text-primary" />{title}
+      </div>
+      <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Fechar">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function StartChat({ onClose }: { onClose: () => void }) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const start = useStartConversation();
 
   return (
-    <div className="p-6">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2"><LifeBuoy className="h-4 w-4 text-primary" />Falar com suporte</DialogTitle>
-      </DialogHeader>
-      <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Conte o que está acontecendo — um admin da Elo entra na conversa com você.
-      </p>
-      <div className="space-y-3">
-        <div><Label>Assunto</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex: Erro ao salvar cliente" /></div>
-        <div><Label>Mensagem</Label><Textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Descreva o problema ou dúvida…" /></div>
+    <>
+      <ChatHeader title="Falar com suporte" onClose={onClose} />
+      <div className="flex-1 overflow-y-auto p-4">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Conte o que está acontecendo — um admin da Elo entra na conversa com você.
+        </p>
+        <div className="space-y-3">
+          <div><Label>Assunto</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex: Erro ao salvar cliente" /></div>
+          <div><Label>Mensagem</Label><Textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Descreva o problema ou dúvida…" /></div>
+        </div>
+        <Button
+          className="mt-4 w-full"
+          disabled={!subject.trim() || !message.trim() || start.isPending}
+          onClick={() => start.mutate({ subject, message })}
+        >
+          {start.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+          Iniciar conversa
+        </Button>
       </div>
-      <Button
-        className="mt-4 w-full"
-        disabled={!subject.trim() || !message.trim() || start.isPending}
-        onClick={() => start.mutate({ subject, message })}
-      >
-        {start.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-        Iniciar conversa
-      </Button>
-    </div>
+    </>
   );
 }
 
-function ChatThread({ conversation }: { conversation: any }) {
+function ChatThread({ conversation, onClose }: { conversation: any; onClose: () => void }) {
   const { user } = useCurrentUser();
   const { data: replies } = useConversationReplies(conversation.id);
   const [text, setText] = useState("");
@@ -116,11 +145,9 @@ function ChatThread({ conversation }: { conversation: any }) {
 
   return (
     <>
-      <DialogHeader className="border-b border-border/60 px-6 py-4">
-        <DialogTitle className="flex items-center gap-2 text-base"><LifeBuoy className="h-4 w-4 text-primary" />{conversation.subject}</DialogTitle>
-      </DialogHeader>
+      <ChatHeader title={conversation.subject} onClose={onClose} />
 
-      <div ref={scrollRef} className="min-h-[320px] flex-1 space-y-3 overflow-y-auto bg-surface-2/40 p-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-surface-2/40 p-4">
         {timeline.map((m: any) => {
           const mine = m.sender_id === user?.id;
           return (

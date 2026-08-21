@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, PartyPopper, ArrowLeft, ShieldCheck, Sparkles, Users, LayoutGrid, BarChart3 } from "lucide-react";
+import { Loader2, PartyPopper, ArrowLeft, ShieldCheck, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Entrar — Elo Marketing OS" }] }),
@@ -119,111 +119,20 @@ function AuthPage() {
     if (error) { setLoading(false); toast.error("Falha ao entrar com Google"); }
   };
 
-  const features = [
-    { icon: Users, label: "Clientes e CRM", desc: "Verba, contratos e histórico num só lugar" },
-    { icon: LayoutGrid, label: "Tarefas em quadros", desc: "Colunas tipadas e colaboração ao vivo" },
-    { icon: BarChart3, label: "Relatórios automáticos", desc: "Meta e Google Ads sempre atualizados" },
-  ];
-
   return (
-    <div className="dark min-h-screen overflow-y-auto bg-[#07070a] text-foreground lg:grid lg:grid-cols-2">
-      {/* Coluna de marca — só aparece em telas grandes; em mobile vira um
-          cabeçalho compacto acima do formulário. */}
-      <div className="relative hidden flex-col justify-between overflow-hidden border-r border-white/5 px-12 py-14 lg:flex">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <motion.div
-            animate={{ x: [0, 60, 0], y: [0, -40, 0], opacity: [0.35, 0.55, 0.35] }}
-            transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
-            className="absolute -left-32 top-0 h-[480px] w-[480px] rounded-full bg-primary/30 blur-[130px]"
-          />
-          <motion.div
-            animate={{ x: [0, -50, 0], y: [0, 50, 0], opacity: [0.2, 0.4, 0.2] }}
-            transition={{ duration: 15, ease: "easeInOut", repeat: Infinity }}
-            className="absolute -right-24 bottom-0 h-[420px] w-[420px] rounded-full bg-indigo-500/25 blur-[130px]"
-          />
-          <motion.div
-            animate={{ x: [0, 30, 0], y: [0, 30, 0], opacity: [0.15, 0.3, 0.15] }}
-            transition={{ duration: 18, ease: "easeInOut", repeat: Infinity }}
-            className="absolute left-1/3 top-1/3 h-[320px] w-[320px] rounded-full bg-purple-500/20 blur-[110px]"
-          />
-          <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] [background-size:44px_44px]" />
-        </div>
+    <div className="dark relative min-h-screen overflow-y-auto bg-[#07070a] text-foreground">
+      <WaveBackground />
 
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="relative flex items-center gap-3"
-        >
-          <img src="/logo-mark.png" alt="Elo Marketing" className="h-10 w-auto drop-shadow-[0_0_30px_rgba(37,99,235,0.35)]" />
-          <div className="font-display text-lg font-bold tracking-tight text-white">
-            Elo Marketing<span className="text-primary"> OS</span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-          className="relative max-w-md"
-        >
-          <h1 className="font-display text-4xl font-bold leading-tight tracking-tight text-white">
-            Tudo da sua agência, <span className="text-primary">em um só lugar.</span>
-          </h1>
-          <p className="mt-4 text-sm leading-relaxed text-white/50">
-            Clientes, tarefas, campanhas e financeiro — o sistema operacional da Elo Marketing.
-          </p>
-
-          <div className="mt-9 space-y-4">
-            {features.map((f, i) => (
-              <motion.div
-                key={f.label}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 + i * 0.1 }}
-                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <f.icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-white">{f.label}</div>
-                  <div className="truncate text-xs text-white/40">{f.desc}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="relative flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] text-white/40"
-        >
-          <ShieldCheck className="h-3 w-3" />Sistema privado · acesso restrito
-        </motion.div>
-      </div>
-
-      {/* Coluna do formulário */}
+      {/* Card de login — centralizado na tela inteira */}
       <div className="relative flex min-h-screen items-center justify-center px-4 py-12">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden lg:hidden">
-          <motion.div
-            animate={{ x: [0, 40, 0], y: [0, -30, 0], opacity: [0.3, 0.5, 0.3] }}
-            transition={{ duration: 12, ease: "easeInOut", repeat: Infinity }}
-            className="absolute -left-20 top-0 h-[320px] w-[320px] rounded-full bg-primary/25 blur-[100px]"
-          />
-        </div>
-
         <motion.div
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl shadow-black/50 backdrop-blur-2xl"
         >
-          {/* Monograma + marca — só em mobile, já que o desktop tem a coluna de marca */}
-          <div className="mb-7 flex flex-col items-center text-center lg:hidden">
-            <img src="/logo-mark.png" alt="Elo Marketing" className="mb-3 h-12 w-auto" />
+          <div className="mb-7 flex flex-col items-center text-center">
+            <img src="/logo-mark.png" alt="Elo Marketing" className="mb-3 h-14 w-auto drop-shadow-[0_0_30px_rgba(37,99,235,0.35)]" />
             <div className="font-display text-xl font-bold tracking-tight text-white">
               Elo Marketing<span className="text-primary"> OS</span>
             </div>
@@ -332,6 +241,94 @@ function AuthPage() {
         </div>
         </motion.div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Fundo de ondas animadas — cor em movimento, sem linhas de grade.
+ * Três camadas de <path> translúcidas, cada uma deslizando na horizontal
+ * num loop infinito, com leve variação de forma via keyframes no "d".
+ */
+function WaveBackground() {
+  const layers = [
+    {
+      fill: "url(#waveGradA)",
+      opacity: 0.55,
+      duration: 16,
+      y: 0,
+      d: [
+        "M0,160 C320,220 420,80 720,120 C1020,160 1120,60 1440,110 L1440,400 L0,400 Z",
+        "M0,140 C300,90 460,200 720,150 C980,100 1140,190 1440,150 L1440,400 L0,400 Z",
+        "M0,160 C320,220 420,80 720,120 C1020,160 1120,60 1440,110 L1440,400 L0,400 Z",
+      ],
+    },
+    {
+      fill: "url(#waveGradB)",
+      opacity: 0.4,
+      duration: 22,
+      y: 40,
+      d: [
+        "M0,200 C280,140 480,260 760,200 C1040,140 1200,240 1440,190 L1440,400 L0,400 Z",
+        "M0,180 C300,240 500,120 760,170 C1020,220 1180,120 1440,170 L1440,400 L0,400 Z",
+        "M0,200 C280,140 480,260 760,200 C1040,140 1200,240 1440,190 L1440,400 L0,400 Z",
+      ],
+    },
+    {
+      fill: "url(#waveGradC)",
+      opacity: 0.3,
+      duration: 28,
+      y: 90,
+      d: [
+        "M0,240 C260,280 520,180 780,230 C1040,280 1220,200 1440,240 L1440,400 L0,400 Z",
+        "M0,260 C280,200 500,300 780,260 C1060,220 1200,300 1440,260 L1440,400 L0,400 Z",
+        "M0,240 C260,280 520,180 780,230 C1040,280 1220,200 1440,240 L1440,400 L0,400 Z",
+      ],
+    },
+  ];
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-[#07070a]">
+      <motion.div
+        animate={{ opacity: [0.5, 0.8, 0.5] }}
+        transition={{ duration: 10, ease: "easeInOut", repeat: Infinity }}
+        className="absolute left-1/2 top-1/2 h-[70vh] w-[70vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 blur-[160px]"
+      />
+      <svg
+        className="absolute bottom-0 left-0 h-[60vh] w-full"
+        viewBox="0 0 1440 400"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="waveGradA" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#2563eb" />
+            <stop offset="50%" stopColor="#7c3aed" />
+            <stop offset="100%" stopColor="#2563eb" />
+          </linearGradient>
+          <linearGradient id="waveGradB" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#4f46e5" />
+            <stop offset="50%" stopColor="#0ea5e9" />
+            <stop offset="100%" stopColor="#4f46e5" />
+          </linearGradient>
+          <linearGradient id="waveGradC" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#7c3aed" />
+            <stop offset="50%" stopColor="#2563eb" />
+            <stop offset="100%" stopColor="#7c3aed" />
+          </linearGradient>
+        </defs>
+        {layers.map((layer, i) => (
+          <motion.path
+            key={i}
+            fill={layer.fill}
+            opacity={layer.opacity}
+            initial={false}
+            animate={{ d: layer.d, x: [0, -60, 0] }}
+            transition={{ duration: layer.duration, ease: "easeInOut", repeat: Infinity }}
+            style={{ translateY: layer.y }}
+          />
+        ))}
+      </svg>
+      <div className="absolute inset-0 bg-gradient-to-t from-[#07070a] via-transparent to-[#07070a]/40" />
     </div>
   );
 }
