@@ -34,19 +34,19 @@ export function SupportWidget() {
         )}
       </AnimatePresence>
 
-      <TooltipProvider>
+      <TooltipProvider delayDuration={150}>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               onClick={() => setOpen((v) => !v)}
               aria-label="Falar com suporte"
-              className="fixed bottom-6 right-6 z-50 flex h-13 w-13 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition hover:scale-105 hover:bg-primary/90"
+              className="fixed bottom-6 right-6 z-[60] flex h-13 w-13 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition hover:scale-105 hover:bg-primary/90"
               style={{ height: "3.25rem", width: "3.25rem" }}
             >
               {open ? <X className="h-6 w-6" /> : <LifeBuoy className="h-6 w-6" />}
             </button>
           </TooltipTrigger>
-          <TooltipContent side="left">Falar com suporte</TooltipContent>
+          {!open && <TooltipContent side="left">Falar com suporte</TooltipContent>}
         </Tooltip>
       </TooltipProvider>
     </>

@@ -125,7 +125,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: {
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-sidebar-border/80 bg-sidebar lg:block">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 overflow-hidden rounded-r-2xl border-r border-sidebar-border/80 bg-sidebar lg:block">
         {content()}
       </aside>
 
