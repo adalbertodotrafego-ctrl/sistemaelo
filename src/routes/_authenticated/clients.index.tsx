@@ -292,7 +292,7 @@ function ClientsPage() {
                     ["name","Nome do contato *"],["company","Empresa"],["segment","Segmento"],
                     ["email","Email"],["phone","Telefone"],["whatsapp","WhatsApp"],
                     ["city","Cidade"],["state","Estado"],["plan","Plano contratado"],
-                    ["monthly_value","Valor mensal (R$)"],
+                    ["monthly_value","Verba (R$)"],
                   ].map(([k,label]) => (
                     <div key={k}>
                       <Label>{label}</Label>
@@ -408,7 +408,7 @@ function ClientsPage() {
                           <TableHead>Cliente</TableHead>
                           <TableHead className="hidden md:table-cell">Segmento</TableHead>
                           <TableHead className="hidden lg:table-cell">Etiquetas</TableHead>
-                          <TableHead>Mensalidade</TableHead>
+                          <TableHead>Verba</TableHead>
                           {adBudgets && <TableHead className="hidden sm:table-cell">Verba de mídia</TableHead>}
                           <TableHead className="w-10" />
                         </TableRow>

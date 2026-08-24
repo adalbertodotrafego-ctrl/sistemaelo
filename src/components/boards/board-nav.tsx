@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BoardSettings } from "@/components/boards/board-settings";
-import { useBoardsTree } from "@/lib/boards/queries";
+import { useBoardsTree, usePrefetchBoard } from "@/lib/boards/queries";
 import {
   useArchiveBoard, useCreateBoard, useCreateWorkspace, useDuplicateBoard,
   useRenameWorkspace, useCreateFolder, useRenameFolder, useDeleteFolder,
@@ -477,6 +477,7 @@ function BoardRow({ b, active, canDrag, isAdmin, fav, onToggleFav, onSettings, o
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: b.id, disabled: !canDrag });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 20 : undefined };
+  const prefetchBoard = usePrefetchBoard();
   return (
     <div
       ref={setNodeRef}
@@ -491,7 +492,13 @@ function BoardRow({ b, active, canDrag, isAdmin, fav, onToggleFav, onSettings, o
           <GripVertical className="h-3 w-3" />
         </button>
       )}
-      <Link to="/tasks/$boardId" params={{ boardId: b.id }} className="flex min-w-0 flex-1 items-center gap-1.5" style={b.color ? { borderLeft: `2px solid ${b.color}`, paddingLeft: 6 } : undefined}>
+      <Link
+        to="/tasks/$boardId"
+        params={{ boardId: b.id }}
+        onMouseEnter={() => prefetchBoard(b.id)}
+        className="flex min-w-0 flex-1 items-center gap-1.5"
+        style={b.color ? { borderLeft: `2px solid ${b.color}`, paddingLeft: 6 } : undefined}
+      >
         <span className="shrink-0 text-sm">{b.icon || "📋"}</span>
         <span className="truncate">{b.name}</span>
       </Link>

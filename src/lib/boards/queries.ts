@@ -69,49 +69,66 @@ export function useProfiles() {
 }
 
 // ── Board aberto: grupos + colunas + itens + células ─────────────────
+async function fetchBoardData(boardId: string): Promise<BoardData> {
+  // Itens e células são paginados: o PostgREST corta em 1000 linhas sem
+  // avisar, e quadro grande (o "Arquivo de Demandas" tem 2.656 itens e
+  // ~10 mil células) aparecia pela metade. Ordenação com desempate por
+  // id/column_id para as fatias não repetirem nem pularem linha.
+  const [board, groups, columns, items, values] = await Promise.all([
+    sb.from("boards").select("*").eq("id", boardId).single(),
+    sb.from("groups").select("*").eq("board_id", boardId).order("position"),
+    sb.from("columns").select("*").eq("board_id", boardId).order("position"),
+    fetchAllRows<Item>((from, to) =>
+      sb.from("items").select("*").eq("board_id", boardId).eq("state", "active")
+        .is("parent_item_id", null).order("position").order("id").range(from, to),
+    ),
+    fetchAllRows<any>((from, to) =>
+      sb.from("column_values")
+        .select("item_id, column_id, value, text_cache, items!inner(board_id)")
+        .eq("items.board_id", boardId)
+        .order("item_id").order("column_id").range(from, to),
+    ),
+  ]);
+  const cellMap: CellMap = {};
+  for (const cv of values) {
+    (cellMap[cv.item_id] ??= {})[cv.column_id] = { value: cv.value, text_cache: cv.text_cache };
+  }
+
+  // Demandas recorrentes concluídas num período que já passou voltam a
+  // ficar pendentes: limpa o carimbo e o status de conclusão. Roda aqui,
+  // ao abrir o quadro, para não depender de rotina agendada no servidor.
+  const reopened = await reopenDueRecurring(items, ok(columns) as BoardColumn[], cellMap);
+
+  return {
+    board: ok(board),
+    groups: ok(groups),
+    columns: ok(columns),
+    items: reopened,
+    cellMap,
+  };
+}
+
+export const boardQueryKey = (boardId: string) => ["board", boardId] as const;
+
 export function useBoardData(boardId: string) {
   return useQuery({
-    queryKey: ["board", boardId],
-    queryFn: async (): Promise<BoardData> => {
-      // Itens e células são paginados: o PostgREST corta em 1000 linhas sem
-      // avisar, e quadro grande (o "Arquivo de Demandas" tem 2.656 itens e
-      // ~10 mil células) aparecia pela metade. Ordenação com desempate por
-      // id/column_id para as fatias não repetirem nem pularem linha.
-      const [board, groups, columns, items, values] = await Promise.all([
-        sb.from("boards").select("*").eq("id", boardId).single(),
-        sb.from("groups").select("*").eq("board_id", boardId).order("position"),
-        sb.from("columns").select("*").eq("board_id", boardId).order("position"),
-        fetchAllRows<Item>((from, to) =>
-          sb.from("items").select("*").eq("board_id", boardId).eq("state", "active")
-            .is("parent_item_id", null).order("position").order("id").range(from, to),
-        ),
-        fetchAllRows<any>((from, to) =>
-          sb.from("column_values")
-            .select("item_id, column_id, value, text_cache, items!inner(board_id)")
-            .eq("items.board_id", boardId)
-            .order("item_id").order("column_id").range(from, to),
-        ),
-      ]);
-      const cellMap: CellMap = {};
-      for (const cv of values) {
-        (cellMap[cv.item_id] ??= {})[cv.column_id] = { value: cv.value, text_cache: cv.text_cache };
-      }
-
-      // Demandas recorrentes concluídas num período que já passou voltam a
-      // ficar pendentes: limpa o carimbo e o status de conclusão. Roda aqui,
-      // ao abrir o quadro, para não depender de rotina agendada no servidor.
-      const reopened = await reopenDueRecurring(items, ok(columns) as BoardColumn[], cellMap);
-
-      return {
-        board: ok(board),
-        groups: ok(groups),
-        columns: ok(columns),
-        items: reopened,
-        cellMap,
-      };
-    },
+    queryKey: boardQueryKey(boardId),
+    queryFn: () => fetchBoardData(boardId),
     enabled: Boolean(boardId),
   });
+}
+
+/**
+ * Começa a buscar o quadro antes do clique — chamado no hover de um item da
+ * barra lateral. Se o usuário efetivamente entrar, os dados já estão (ou
+ * quase) prontos no cache do TanStack Query, então o quadro abre na hora em
+ * vez de esperar o fetch inteiro depois da navegação.
+ */
+export function usePrefetchBoard() {
+  const qc = useQueryClient();
+  return (boardId: string) => {
+    qc.prefetchQuery({ queryKey: boardQueryKey(boardId), queryFn: () => fetchBoardData(boardId) });
+  };
 }
 
 /**
@@ -136,17 +153,28 @@ async function reopenDueRecurring(items: Item[], columns: BoardColumn[], cellMap
     .filter((c) => c.doneIdx.size > 0);
 
   const ids = due.map((it) => it.id);
-  await sb.from("items").update({ completed_at: null }).in("id", ids);
 
+  // Junta as células a limpar (item_id + column_id) e apaga tudo numa única
+  // viagem por coluna, em vez de um DELETE por item×coluna em série — um
+  // board com muitas recorrências vencidas travava vários segundos aqui
+  // antes de sequer aparecer.
+  const toClear = new Map<string, string[]>(); // column_id → item_ids
   for (const it of due) {
     for (const col of doneCols) {
       const idx = (cellMap[it.id]?.[col.id]?.value as { index?: number } | null)?.index;
       if (idx != null && col.doneIdx.has(idx)) {
-        await sb.from("column_values").delete().eq("item_id", it.id).eq("column_id", col.id);
+        (toClear.get(col.id) ?? toClear.set(col.id, []).get(col.id)!).push(it.id);
         delete cellMap[it.id][col.id];
       }
     }
   }
+
+  await Promise.all([
+    sb.from("items").update({ completed_at: null }).in("id", ids),
+    ...Array.from(toClear.entries()).map(([columnId, itemIds]) =>
+      sb.from("column_values").delete().eq("column_id", columnId).in("item_id", itemIds),
+    ),
+  ]);
 
   const dueSet = new Set(ids);
   return items.map((it) => (dueSet.has(it.id) ? { ...it, completed_at: null } : it));
@@ -477,22 +505,26 @@ export function useMyItems(userId: string | undefined) {
 
       // Busca as datas desses itens para o filtro "hoje". Os ids vão em lotes:
       // um `.in()` com milhares de uuids estoura o tamanho máximo da URL.
+      // Lotes buscados em paralelo — sequencial esperava um round-trip
+      // completo por lote antes de disparar o próximo.
       const ids = items.map((i) => i.id);
-      const dateCells: any[] = [];
-      for (let i = 0; i < ids.length; i += 300) {
-        const slice = ids.slice(i, i + 300);
-        dateCells.push(
-          ...(await fetchAllRows<any>((from, to) =>
-            sb
-              .from("column_values")
-              .select("item_id, value, columns!inner(type)")
-              .in("columns.type", ["date", "timeline"])
-              .in("item_id", slice)
-              .order("item_id")
-              .range(from, to),
-          )),
-        );
-      }
+      const slices: string[][] = [];
+      for (let i = 0; i < ids.length; i += 300) slices.push(ids.slice(i, i + 300));
+      const dateCells: any[] = (
+        await Promise.all(
+          slices.map((slice) =>
+            fetchAllRows<any>((from, to) =>
+              sb
+                .from("column_values")
+                .select("item_id, value, columns!inner(type)")
+                .in("columns.type", ["date", "timeline"])
+                .in("item_id", slice)
+                .order("item_id")
+                .range(from, to),
+            ),
+          ),
+        )
+      ).flat();
       const datesByItem = new Map<string, string[]>();
       for (const cv of dateCells) {
         const v = cv.value as { date?: string; from?: string; to?: string } | null;

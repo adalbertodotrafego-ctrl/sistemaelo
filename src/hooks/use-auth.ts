@@ -8,9 +8,12 @@ export function useCurrentUser() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(({ data }) => {
+    // getSession() lê da sessão local (instantâneo); getUser() sempre revalida
+    // o JWT no servidor. Como este hook roda em quase toda tela, a troca evita
+    // uma chamada de rede redundante no primeiro render de cada uma.
+    supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      setUser(data.user ?? null);
+      setUser(data.session?.user ?? null);
       setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
