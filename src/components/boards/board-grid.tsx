@@ -183,7 +183,7 @@ function HeaderRow({ boardId, columns, onEditStatus }: {
 
   return (
     <div className="sticky top-0 z-20 flex border-b border-border bg-card text-xs font-medium text-muted-foreground">
-      <div style={{ width: NAME_COL_WIDTH }} className="px-3 py-2">Item</div>
+      <div style={{ width: NAME_COL_WIDTH }} className="sticky left-0 z-10 shrink-0 bg-card px-3 py-2">Item</div>
       {columns.map((c) => (
         <div
           key={c.id}
@@ -326,7 +326,7 @@ function GroupSection({ boardId, group, columns, items, cellMap, profiles, onOpe
 
   return (
     <section className="mt-6 first:mt-3">
-      <div className="group/gh flex items-center gap-2 py-1">
+      <div className="group/gh sticky left-0 flex w-fit items-center gap-2 py-1">
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
@@ -454,7 +454,7 @@ function ItemRow({ boardId, item, columns, cellMap, profiles, onOpenItem }: {
         isOver && "border-t-2 border-t-primary",
       )}
     >
-      <div style={{ width: NAME_COL_WIDTH }} className="flex shrink-0 items-center">
+      <div style={{ width: NAME_COL_WIDTH }} className="sticky left-0 z-10 flex shrink-0 items-center bg-card">
         <span
           ref={dragRef}
           {...attributes}
@@ -577,7 +577,7 @@ function AddItemRow({ boardId, groupId, nextPosition }: {
         onBlur={commit}
         placeholder="+ Adicionar item"
         style={{ width: NAME_COL_WIDTH }}
-        className="h-9 bg-transparent px-7 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:bg-card"
+        className="sticky left-0 z-10 h-9 shrink-0 bg-card px-7 text-sm text-foreground outline-none placeholder:text-muted-foreground"
       />
     </div>
   );

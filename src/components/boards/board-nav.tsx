@@ -198,8 +198,11 @@ export function BoardNav({ activeBoardId }: { activeBoardId?: string }) {
         )}
 
         {king && sections.map((sec) => {
-          if (sec.id === null && sec.boards.length === 0) return null;
-          if (term && sec.boards.length === 0) return null;
+          // Seção sem nenhum quadro visível não aparece: quem não tem acesso
+          // aos quadros de dentro não deve nem saber que a seção existe. O
+          // admin continua vendo as vazias, senão não conseguiria mover um
+          // quadro para uma seção recém-criada.
+          if (sec.boards.length === 0 && (!isAdmin || sec.id === null || term)) return null;
           return (
             <div key={sec.id ?? "none"}>
               <div className="group flex items-center gap-1 px-1">

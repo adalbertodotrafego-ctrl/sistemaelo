@@ -44,10 +44,13 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
+// Lista longa (Tipo de Demanda tem 16 opções) rola DENTRO do popover: sem
+// o teto de altura ele crescia até empurrar a página, e o usuário rolava o
+// quadro inteiro para achar a última opção.
 function PopoverCard({ children, width = 224 }: { children: ReactNode; width?: number }) {
   return (
     <div
-      className="absolute left-0 top-full z-30 mt-1 rounded-md border border-border bg-popover p-1 shadow-lg"
+      className="absolute left-0 top-full z-30 mt-1 max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border bg-popover p-1 shadow-lg"
       style={{ width }}
     >
       {children}
