@@ -82,6 +82,11 @@ async function fetchBoardData(boardId: string): Promise<BoardData> {
       sb.from("items").select("*").eq("board_id", boardId).eq("state", "active")
         .is("parent_item_id", null).order("position").order("id").range(from, to),
     ),
+    // Filtra pela coluna board_id da PRÓPRIA linha (denormalizada em
+    // 20260809130000_scale_performance.sql): o índice
+    // idx_column_values_board_item cobre filtro + ordenação de uma vez.
+    // Pelo embed items!inner(board_id) o Postgres precisava juntar a tabela
+    // inteira antes de filtrar, e quadro grande estourava o tempo limite.
     fetchAllRows<any>((from, to) =>
       sb.from("column_values")
         .select("item_id, column_id, value, text_cache")
