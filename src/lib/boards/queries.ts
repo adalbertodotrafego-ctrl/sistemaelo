@@ -84,8 +84,8 @@ async function fetchBoardData(boardId: string): Promise<BoardData> {
     ),
     fetchAllRows<any>((from, to) =>
       sb.from("column_values")
-        .select("item_id, column_id, value, text_cache, items!inner(board_id)")
-        .eq("items.board_id", boardId)
+        .select("item_id, column_id, value, text_cache")
+        .eq("board_id", boardId)
         .order("item_id").order("column_id").range(from, to),
     ),
   ]);
